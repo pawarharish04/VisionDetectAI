@@ -1,0 +1,456 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Serverless Object Detection Pipeline
+  S3 bucket, IAM role, presign Lambda, detect Lambda, annotate Lambda, API Gateway
+
+# ──────────────────────────────────────────────────────────────
+# Parameters
+# ──────────────────────────────────────────────────────────────
+Parameters:
+  BucketName:
+    Type: String
+    Default: object-detection-images
+    Description: >
+      Globally unique S3 bucket name.
+      Change this before deploying — S3 names must be globally unique.
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment tag.
+
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: (Optional) Email address for SNS high-confidence detection alerts.
+
+# ──────────────────────────────────────────────────────────────
+# Globals
+# ──────────────────────────────────────────────────────────────
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        BUCKET_NAME: !Ref BucketName
+        TABLE_NAME: !Ref DetectionResultsTable
+        ENVIRONMENT: !Ref Environment
+
+# ──────────────────────────────────────────────────────────────
+# Resources
+# ──────────────────────────────────────────────────────────────
+Resources:
+
+  # ── S3 Bucket ─────────────────────────────────────────────
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+
+      # Versioning — kept on so results/ objects are recoverable
+      VersioningConfiguration:
+        Status: Enabled
+
+      # CORS: allow browser direct-upload via presigned PUT
+      CorsConfiguration:
+        CorsRules:
+          - Id: AllowPresignedPUT
+            AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - PUT
+              - GET
+              - HEAD
+            AllowedHeaders:
+              - "*"
+            ExposedHeaders:
+              - ETag
+            MaxAge: 3600
+
+      # Lifecycle: archive results/ to Glacier after 7 days,
+      #            expire after 30 days
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArchiveResultsToGlacier
+            Status: Enabled
+            Prefix: results/
+            Transitions:
+              - TransitionInDays: 7
+                StorageClass: GLACIER
+          - Id: ExpireResults
+            Status: Enabled
+            Prefix: results/
+            ExpirationInDays: 30
+          - Id: ExpireImages
+            Status: Enabled
+            Prefix: images/
+            ExpirationInDays: 30
+
+      # Block public access — objects are only reachable via presigned URLs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      Tags:
+        - Key: Project
+          Value: ObjectDetection
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ── DynamoDB Table ─────────────────────────────────────────
+  DetectionResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "DetectionResults-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+        - AttributeName: imageKey
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+        - AttributeName: statusPk
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: imageKey
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: statusPk
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+      # TTL so old records self-delete
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+      # Stream for WebSocket push (Hour 4)
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+
+      Tags:
+        - Key: Project
+          Value: ObjectDetection
+
+  # ── IAM Role for all Lambdas ───────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ObjectDetectionLambdaRole-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        # CloudWatch Logs
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+      Policies:
+        - PolicyName: ObjectDetectionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+
+              # S3 — read images, write results, generate presigned URLs
+              - Sid: S3Access
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}"
+                  - !Sub "arn:aws:s3:::${BucketName}/images/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/results/*"
+
+              # Rekognition
+              - Sid: RekognitionAccess
+                Effect: Allow
+                Action:
+                  - rekognition:DetectLabels
+                  - rekognition:DetectText
+                  - rekognition:DetectModerationLabels
+                  - rekognition:DetectFaces
+                Resource: "*"
+
+              # DynamoDB
+              - Sid: DynamoDBAccess
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/DetectionResults-${Environment}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/DetectionResults-${Environment}/stream/*"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/DetectionResults-${Environment}/index/*"
+
+              # SNS — publish high-confidence alerts
+              - Sid: SNSAccess
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sns:Subscribe
+                  - sns:CreateTopic
+                  - sns:GetTopicAttributes
+                Resource: !Ref DetectionAlertsTopic
+
+              # CloudWatch — custom metrics
+              - Sid: CloudWatchAccess
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # ── SNS Topic ──────────────────────────────────────────────
+  DetectionAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "DetectionAlerts-${Environment}"
+      DisplayName: "Object Detection High-Confidence Alerts"
+
+  DetectionAlertsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      TopicArn: !Ref DetectionAlertsTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  # ── Presign Lambda ─────────────────────────────────────────
+  PresignFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-presign-${Environment}"
+      CodeUri: src/presign/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Description: >
+        Returns a presigned S3 PUT URL so the browser uploads
+        directly to S3 — Lambda never touches the binary.
+      Events:
+        PresignApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ObjectDetectionApi
+            Path: /presign
+            Method: GET
+
+  # ── Detect Lambda ─────────────────────────────────────────
+  DetectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-detect-${Environment}"
+      CodeUri: src/detect/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      # Detection can be slow for large images; give it breathing room
+      Timeout: 60
+      MemorySize: 512
+      Description: >
+        Triggered by s3:ObjectCreated on images/.
+        Calls Rekognition detect_labels, detect_text, and detect_moderation_labels
+        in parallel, then writes the combined result to DynamoDB.
+      Environment:
+        Variables:
+          # Inherit TABLE_NAME, BUCKET_NAME, ENVIRONMENT from Globals
+          SNS_TOPIC_ARN: !Ref DetectionAlertsTopic
+          HIGH_CONFIDENCE_THRESHOLD: "90"
+          TTL_DAYS: "30"
+      Events:
+        S3ImageUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref ImagesBucket
+            # Only fire on new objects under images/
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: images/
+
+  # ── Annotate Lambda ───────────────────────────────────────
+  AnnotateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-annotate-${Environment}"
+      CodeUri: src/annotate/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Description: >
+        Triggered by DynamoDB Streams.
+        Draws bounding boxes using detect_labels result and saves to S3 results/
+      Events:
+        DetectionResultsStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt DetectionResultsTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            FilterCriteria:
+              Filters:
+                - Pattern: "{ \"eventName\": [ \"INSERT\" ] }"
+
+  # ── Results API Lambda ────────────────────────────────────
+  ResultsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-results-${Environment}"
+      CodeUri: src/results/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Description: >
+        Returns the latest detection results for a specific S3 image key.
+      Events:
+        ResultsApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ObjectDetectionApi
+            Path: /results/{proxy+}
+            Method: GET
+
+  # ── API Gateway ────────────────────────────────────────────
+  ObjectDetectionApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "ObjectDetectionApi-${Environment}"
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Tags:
+        Project: ObjectDetection
+
+  # ── CloudWatch Alarm ───────────────────────────────────────
+  DetectFunctionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "DetectFunction-ErrorRate-${Environment}"
+      AlarmDescription: "Triggers if DetectFunction error rate exceeds 1% over 5 minutes"
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 1  # 1%
+      EvaluationPeriods: 1
+      Metrics:
+        - Id: error_rate
+          Label: "Error Rate"
+          Expression: "(errors / invocations) * 100"
+          ReturnData: true
+        - Id: errors
+          MetricStat:
+            Metric:
+              Namespace: "AWS/Lambda"
+              MetricName: "Errors"
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref DetectFunction
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+        - Id: invocations
+          MetricStat:
+            Metric:
+              Namespace: "AWS/Lambda"
+              MetricName: "Invocations"
+              Dimensions:
+                - Name: FunctionName
+                  Value: !Ref DetectFunction
+            Period: 300
+            Stat: Sum
+          ReturnData: false
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref DetectionAlertsTopic
+
+# ──────────────────────────────────────────────────────────────
+# Conditions
+# ──────────────────────────────────────────────────────────────
+Conditions:
+  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, ""]]
+
+# ──────────────────────────────────────────────────────────────
+# Outputs
+# ──────────────────────────────────────────────────────────────
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway base URL"
+    Value: !Sub "https://${ObjectDetectionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "ObjectDetectionApiEndpoint-${Environment}"
+
+  PresignEndpoint:
+    Description: "Presigned URL endpoint — GET /presign?filename=photo.jpg&contentType=image/jpeg"
+    Value: !Sub "https://${ObjectDetectionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/presign"
+
+  BucketName:
+    Description: "S3 bucket name"
+    Value: !Ref ImagesBucket
+    Export:
+      Name: !Sub "ObjectDetectionBucket-${Environment}"
+
+  DynamoTableName:
+    Description: "DynamoDB table name"
+    Value: !Ref DetectionResultsTable
+    Export:
+      Name: !Sub "ObjectDetectionTable-${Environment}"
+
+  LambdaRoleArn:
+    Description: "IAM Role ARN shared by all Lambda functions"
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub "ObjectDetectionLambdaRole-${Environment}"
+
+  SNSTopicArn:
+    Description: "SNS topic ARN for detection alerts"
+    Value: !Ref DetectionAlertsTopic
+    Export:
+      Name: !Sub "ObjectDetectionSNSTopic-${Environment}"
+
+  DetectFunctionName:
+    Description: "detect-objects Lambda function name"
+    Value: !Ref DetectFunction
+    Export:
+      Name: !Sub "ObjectDetectionDetectFunction-${Environment}"
+
+  AnnotateFunctionName:
+    Description: "annotate-image Lambda function name"
+    Value: !Ref AnnotateFunction
+    Export:
+      Name: !Sub "ObjectDetectionAnnotateFunction-${Environment}"
+

@@ -1,0 +1,3 @@
+# No third-party dependencies needed for the presign Lambda.
+# boto3 is pre-installed in the Lambda runtime.
+# Add here only if you use extra libraries in this function.

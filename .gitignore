@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────────
+# Serverless Object Detection — .gitignore
+# ──────────────────────────────────────────────────────────────
+
+# SAM build artifacts
+.aws-sam/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Lambda layer ZIPs
+*.zip
+
+# Environment / secrets  — NEVER commit these
+.env
+.env.*
+samconfig.toml        # contains bucket names and stack names — keep local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

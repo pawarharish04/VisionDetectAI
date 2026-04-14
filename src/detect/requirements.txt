@@ -1,0 +1,5 @@
+# No third-party dependencies for the detect Lambda.
+# boto3 (Rekognition + DynamoDB) is pre-installed in the Lambda Python 3.12 runtime.
+#
+# If you add Pillow for annotation in Hour 3, add it here:
+# Pillow==10.3.0

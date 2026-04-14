@@ -1,0 +1,16 @@
+# Samconfig — local deploy configuration
+# DO NOT commit this file (it contains your bucket and stack names)
+# Add samconfig.toml to .gitignore
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name      = "object-detection-dev"
+s3_bucket       = ""                        # filled automatically by deploy script
+region          = "us-east-1"
+confirm_changeset = false
+capabilities    = "CAPABILITY_NAMED_IAM"
+parameter_overrides = [
+    "BucketName=object-detection-images-CHANGEME",
+    "Environment=dev"
+]

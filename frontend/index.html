@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vision — Serverless Object Detection</title>
+    <style>
+        /* ── Modern Dark Theme & Typography ── */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --error: #ef4444;
+            --success: #10b981;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* ── Glassmorphism Panels ── */
+        .glass-panel {
+            background: var(--surface-color);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* ── Drag & Drop Area ── */
+        .upload-area {
+            border: 2px dashed var(--border-color);
+            border-radius: 0.75rem;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover, .upload-area.drag-over {
+            border-color: var(--primary);
+            background: rgba(59, 130, 246, 0.05); /* very light primary */
+            transform: scale(1.02);
+        }
+        
+        .upload-area input[type="file"] {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            display: block;
+            color: var(--text-muted);
+            transition: color 0.3s;
+        }
+        
+        .upload-area:hover .upload-icon {
+            color: var(--primary);
+        }
+
+        /* ── Status & Loaders ── */
+        .status-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            padding: 2rem 0;
+        }
+
+        .status-text {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 
+            to { transform: rotate(360deg); } 
+        }
+
+        /* ── Results Area ── */
+        .results-area {
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .image-preview {
+            width: 100%;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        .labels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .label-chip {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Confidence background bar */
+        .label-chip::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            background: rgba(59, 130, 246, 0.2);
+            z-index: 0;
+            width: var(--confidence);
+        }
+
+        .label-name {
+            font-weight: 600;
+            z-index: 1;
+        }
+
+        .label-confidence {
+            color: var(--primary);
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+            z-index: 1;
+        }
+
+        /* ── Alerts ── */
+        .alert {
+            display: none;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            font-weight: 500;
+        }
+        .alert.error {
+            display: block;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            color: #fca5a5;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>AI Vision</h1>
+    <p class="subtitle">Drag & drop an image to run serverless object detection</p>
+
+    <div class="container">
+        <!-- Upload Section -->
+        <div class="glass-panel" id="uploadPanel">
+            <label class="upload-area" id="dropZone" for="fileInput">
+                <span class="upload-icon">📸</span>
+                <h3>Drag and drop your image here</h3>
+                <p style="color: var(--text-muted); margin-top: 0.5rem; font-size: 0.875rem;">Supports JPG, PNG, WEBP (Max 20MB)</p>
+                <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp" />
+            </label>
+
+            <!-- Loading Status -->
+            <div class="status-container" id="loadingStatus">
+                <div class="spinner"></div>
+                <div class="status-text" id="statusMessage">Uploading image directly to S3...</div>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="errorAlert" class="alert"></div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="glass-panel results-area" id="resultsPanel">
+            <h3>Detection Results</h3>
+            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">Annotated directly from Rekognition outputs.</p>
+            
+            <img id="annotatedImage" class="image-preview" src="" alt="Annotated result" />
+            <div class="labels-grid" id="labelsContainer"></div>
+            
+            <button id="resetBtn" style="margin-top: 2rem; padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; transition: background 0.2s;">Analyze Another Image</button>
+        </div>
+    </div>
+
+    <script>
+        // =====================================================================
+        // AWS SERVERLESS API CONFIGURATION
+        // Replace this URL once you deploy the API via SAM / CloudFormation.
+        // It should look like: https://<api-id>.execute-api.us-east-1.amazonaws.com/dev
+        // =====================================================================
+        const API_BASE_URL = "https://yo5zq9f8qj.execute-api.us-east-1.amazonaws.com/dev";
+        // =====================================================================
+
+        const UPLOAD_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadPanel = document.getElementById('uploadPanel');
+        const loadingStatus = document.getElementById('loadingStatus');
+        const statusMessage = document.getElementById('statusMessage');
+        const errorAlert = document.getElementById('errorAlert');
+        
+        const resultsPanel = document.getElementById('resultsPanel');
+        const annotatedImage = document.getElementById('annotatedImage');
+        const labelsContainer = document.getElementById('labelsContainer');
+        const resetBtn = document.getElementById('resetBtn');
+
+        let pollingInterval = null;
+
+        // ── Event Listeners ───────────────────────────────────────────────
+
+        // Click to upload
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        // Drag & Drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+
+        // Reset
+        resetBtn.addEventListener('click', () => {
+            resultsPanel.style.display = 'none';
+            dropZone.style.display = 'block';
+            fileInput.value = '';
+            hideError();
+        });
+
+        // ── Main Pipeline ─────────────────────────────────────────────────
+
+        async function handleFile(file) {
+            hideError();
+
+            if (!file.type.startsWith('image/')) {
+                return showError("Please upload an image file (JPG, PNG, WEBP).");
+            }
+            if (file.size > UPLOAD_MAX_BYTES) {
+                return showError("File is too large. Max size is 20MB.");
+            }
+            if (API_BASE_URL === "INSERT_API_GATEWAY_URL_HERE") {
+                return showError("API_BASE_URL is not configured. Edit index.html and update line 185.");
+            }
+
+            try {
+                // 1. Enter Loading State
+                dropZone.style.display = 'none';
+                loadingStatus.style.display = 'flex';
+                
+                // 2. Get Presigned URL
+                statusMessage.textContent = "Requesting secure upload URL...";
+                const presignParams = new URLSearchParams({
+                    filename: file.name,
+                    contentType: file.type
+                });
+                
+                const presignUrl = `${API_BASE_URL}/presign?${presignParams}`;
+                const presignRes = await fetch(presignUrl);
+                
+                if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.statusText}`);
+                const presignData = await presignRes.json();
+
+                // 3. Upload File Directly to S3
+                statusMessage.textContent = "Uploading image directly to S3...";
+                const uploadRes = await fetch(presignData.uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': file.type },
+                    body: file // Uploading raw binary
+                });
+
+                if (!uploadRes.ok) throw new Error(`S3 Upload failed: ${uploadRes.statusText}`);
+
+                // 4. Poll for Results
+                statusMessage.textContent = "Detecting objects & annotating... (This takes a few seconds)";
+                startPolling(presignData.imageKey);
+
+            } catch (err) {
+                console.error(err);
+                loadingStatus.style.display = 'none';
+                dropZone.style.display = 'block';
+                showError(err.message);
+            }
+        }
+
+        // ── Polling ───────────────────────────────────────────────────────
+
+        function startPolling(imageKey) {
+            if (pollingInterval) clearTimeout(pollingInterval);
+            
+            const startStr = Date.now();
+            const POLL_TIMEOUT_MS = 60000; // 1 minute max wait
+            let currentDelay = 2000; // start with 2s
+            
+            const poll = async () => {
+                if (Date.now() - startStr > POLL_TIMEOUT_MS) {
+                    loadingStatus.style.display = 'none';
+                    dropZone.style.display = 'block';
+                    showError("Detection timed out after 60 seconds.");
+                    return;
+                }
+
+                try {
+                    // Requires GET /results/{imageKey} endpoint in API Gateway
+                    const encodedKey = encodeURIComponent(imageKey);
+                    const res = await fetch(`${API_BASE_URL}/results/${encodedKey}`);
+                    
+                    if (res.status === 404) {
+                        // Not ready yet — gradually increase backoff interval
+                        if (currentDelay < 5000) currentDelay = 5000;
+                        else if (currentDelay < 10000) currentDelay = 10000;
+                        
+                        pollingInterval = setTimeout(poll, currentDelay);
+                        return;
+                    }
+                    if (!res.ok) throw new Error(`Status API error: ${res.statusText}`);
+                    
+                    const data = await res.json();
+                    
+                    if (data.status === 'failed') {
+                        loadingStatus.style.display = 'none';
+                        dropZone.style.display = 'block';
+                        showError("Lambda detection failed: " + (data.errorMessage || "Unknown error"));
+                        return;
+                    }
+
+                    if (data.status === 'complete' && data.annotatedUrl) {
+                        loadingStatus.style.display = 'none';
+                        displayResults(data);
+                        return; // done!
+                    }
+                    
+                    // Fallback to poll again if status doesn't match above
+                    pollingInterval = setTimeout(poll, currentDelay);
+                } catch (err) {
+                    console.error("Polling error", err);
+                    pollingInterval = setTimeout(poll, currentDelay);
+                }
+            };
+            
+            pollingInterval = setTimeout(poll, currentDelay);
+        }
+
+        // ── Render ────────────────────────────────────────────────────────
+
+        function displayResults(data) {
+            // Setup Image
+            // We append a timestamp to bypass browser caching of the S3 URL
+            annotatedImage.src = `${data.annotatedUrl}?t=${Date.now()}`;
+            
+            // Render Labels
+            labelsContainer.innerHTML = '';
+            
+            // Ensure result JSON is parsed (DynamoDB might store it as a string)
+            const resultObj = typeof data.result === 'string' ? JSON.parse(data.result) : (data.result || {});
+            const labels = resultObj.labels || [];
+            
+            if (labels.length === 0) {
+                labelsContainer.innerHTML = '<p style="grid-column: 1/-1; color: var(--text-muted);">No objects detected.</p>';
+            } else {
+                labels.forEach(lbl => {
+                    const el = document.createElement('div');
+                    el.className = 'label-chip';
+                    // We map the confidence strictly to CSS var for the background pill
+                    el.style.setProperty('--confidence', `${lbl.Confidence}%`);
+                    
+                    el.innerHTML = `
+                        <span class="label-name">${lbl.Name}</span>
+                        <span class="label-confidence">${lbl.Confidence.toFixed(1)}%</span>
+                    `;
+                    labelsContainer.appendChild(el);
+                });
+            }
+
+            resultsPanel.style.display = 'block';
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────
+
+        function showError(msg) {
+            errorAlert.textContent = msg;
+            errorAlert.classList.add('error');
+        }
+
+        function hideError() {
+            errorAlert.classList.remove('error');
+            errorAlert.textContent = '';
+        }
+
+    </script>
+</body>
+</html>

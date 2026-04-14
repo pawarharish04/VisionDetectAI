@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="12dp"
+    android:layout_marginBottom="4dp"
+    android:background="#1E293B">
+
+    <View
+        android:id="@+id/confidenceBar"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_alignParentStart="true"
+        android:background="#3B82F622" />
+
+    <TextView
+        android:id="@+id/tvLabelName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#F8FAFC"
+        android:textStyle="bold"
+        android:text="Object Name" />
+
+    <TextView
+        android:id="@+id/tvConfidence"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:textColor="#3B82F6"
+        android:textStyle="bold"
+        android:text="99.9%" />
+
+</RelativeLayout>
