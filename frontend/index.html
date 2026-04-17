@@ -211,14 +211,47 @@
             border: 1px solid var(--error);
             color: #fca5a5;
         }
+
+        /* ── Image Zoom Modal ── */
+        .zoom-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        .zoom-content {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+        .image-preview { margin-top: 1rem; border-radius: var(--radius); margin-bottom: 2rem; object-fit: contain; width: 100%; max-height: 500px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); cursor: zoom-in; }
     </style>
 </head>
 <body>
 
+    <!-- Zoom Modal -->
+    <div id="zoomModal" class="zoom-modal">
+        <img id="zoomedImage" class="zoom-content" src="" />
+    </div>
+
     <h1>AI Vision</h1>
     <p class="subtitle">Drag & drop an image to run serverless object detection</p>
 
-    <div class="container">
+    <!-- Navigation Tabs -->
+    <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem;">
+        <button id="tabUploadBtn" style="padding: 0.5rem 1.5rem; border-radius: 0.5rem; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600;">Upload & Detect</button>
+        <button id="tabHistoryBtn" style="padding: 0.5rem 1.5rem; border-radius: 0.5rem; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); cursor: pointer; font-weight: 600;">History</button>
+    </div>
+
+    <div class="container" id="mainContainer">
         <!-- Upload Section -->
         <div class="glass-panel" id="uploadPanel">
             <label class="upload-area" id="dropZone" for="fileInput">
@@ -248,6 +281,16 @@
             
             <button id="resetBtn" style="margin-top: 2rem; padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; transition: background 0.2s;">Analyze Another Image</button>
         </div>
+
+        <!-- History Section -->
+        <div class="glass-panel" id="historyPanel" style="display: none;">
+            <h2 style="margin-bottom: 1rem;">Compliance History</h2>
+            <div id="historyLoading" class="status-container" style="display: flex;">
+                <div class="spinner"></div>
+                <div class="status-text">Fetching history...</div>
+            </div>
+            <div id="historyList" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+        </div>
     </div>
 
     <script>
@@ -273,10 +316,102 @@
         const annotatedImage = document.getElementById('annotatedImage');
         const labelsContainer = document.getElementById('labelsContainer');
         const resetBtn = document.getElementById('resetBtn');
+        const zoomModal = document.getElementById('zoomModal');
+        const zoomedImage = document.getElementById('zoomedImage');
+
+        // Tabs
+        const tabUploadBtn = document.getElementById('tabUploadBtn');
+        const tabHistoryBtn = document.getElementById('tabHistoryBtn');
+        const uploadPanel = document.getElementById('uploadPanel');
+        const historyPanel = document.getElementById('historyPanel');
+        const historyLoading = document.getElementById('historyLoading');
+        const historyList = document.getElementById('historyList');
+
+        tabUploadBtn.addEventListener('click', () => {
+            tabUploadBtn.style.background = 'var(--primary)';
+            tabUploadBtn.style.color = 'white';
+            tabUploadBtn.style.border = 'none';
+
+            tabHistoryBtn.style.background = 'var(--surface-color)';
+            tabHistoryBtn.style.color = 'var(--text-main)';
+            tabHistoryBtn.style.border = '1px solid var(--border-color)';
+
+            historyPanel.style.display = 'none';
+            uploadPanel.style.display = 'block';
+            // Show results only if we had an annotated image completed
+            if (annotatedImage.src && !annotatedImage.src.endsWith(location.href)) {
+                resultsPanel.style.display = 'block';
+            }
+        });
+
+        tabHistoryBtn.addEventListener('click', () => {
+            tabHistoryBtn.style.background = 'var(--primary)';
+            tabHistoryBtn.style.color = 'white';
+            tabHistoryBtn.style.border = 'none';
+
+            tabUploadBtn.style.background = 'var(--surface-color)';
+            tabUploadBtn.style.color = 'var(--text-main)';
+            tabUploadBtn.style.border = '1px solid var(--border-color)';
+
+            uploadPanel.style.display = 'none';
+            resultsPanel.style.display = 'none';
+            historyPanel.style.display = 'block';
+
+            fetchHistory();
+        });
+
+        async function fetchHistory() {
+            historyLoading.style.display = 'flex';
+            historyList.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/history`);
+                const data = await response.json();
+                historyLoading.style.display = 'none';
+
+                if (data.history && data.history.length > 0) {
+                    data.history.forEach(item => {
+                        const div = document.createElement('div');
+                        div.style.background = 'rgba(255,255,255,0.05)';
+                        div.style.border = '1px solid var(--border-color)';
+                        div.style.borderRadius = '0.5rem';
+                        div.style.padding = '1rem';
+                        
+                        const date = new Date(item.timestamp * 1000).toLocaleString();
+                        const color = item.compliance_status === 'PASS' ? 'var(--success)' : item.compliance_status === 'FAIL' ? 'var(--error)' : 'var(--text-muted)';
+                        const status = `<span style="color: ${color}; font-weight: bold;">${item.compliance_status}</span>`;
+                        
+                        div.innerHTML = `
+                            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.5rem;">${date}</p>
+                            <p style="margin-bottom: 0.5rem;">Status: ${status}</p>
+                            <p style="font-size: 0.9rem; line-height: 1.4; color: var(--text-main);">${item.ai_safety_report || "No AI Report Available"}</p>
+                        `;
+                        historyList.appendChild(div);
+                    });
+                } else {
+                    historyList.innerHTML = '<p style="color: var(--text-muted);">No history available.</p>';
+                }
+            } catch (error) {
+                historyLoading.style.display = 'none';
+                historyList.innerHTML = `<p style="color: var(--error);">Error loading history: ${error.message}</p>`;
+            }
+        }
 
         let pollingInterval = null;
 
         // ── Event Listeners ───────────────────────────────────────────────
+
+        // Zoom Listeners
+        annotatedImage.addEventListener('click', () => {
+            if (annotatedImage.src) {
+                zoomedImage.src = annotatedImage.src;
+                zoomModal.style.display = 'flex';
+            }
+        });
+        
+        zoomModal.addEventListener('click', () => {
+            zoomModal.style.display = 'none';
+        });
 
         // Click to upload
         fileInput.addEventListener('change', (e) => {
@@ -421,7 +556,8 @@
         function displayResults(data) {
             // Setup Image
             // We append a timestamp to bypass browser caching of the S3 URL
-            annotatedImage.src = `${data.annotatedUrl}?t=${Date.now()}`;
+            const joinChar = data.annotatedUrl.includes('?') ? '&' : '?';
+            annotatedImage.src = `${data.annotatedUrl}${joinChar}t=${Date.now()}`;
             
             // Render Labels
             labelsContainer.innerHTML = '';
@@ -445,6 +581,31 @@
                     `;
                     labelsContainer.appendChild(el);
                 });
+            }
+            
+            // Render PPE Status if available
+            if (data.compliance_status) {
+                const ppeEl = document.createElement('div');
+                ppeEl.style.gridColumn = '1/-1';
+                ppeEl.style.marginTop = '1rem';
+                ppeEl.style.padding = '1rem';
+                ppeEl.style.borderRadius = 'var(--radius)';
+                ppeEl.style.fontWeight = '500';
+                
+                if (data.compliance_status === 'FAIL') {
+                    ppeEl.style.backgroundColor = '#fef2f2';
+                    ppeEl.style.color = '#991b1b';
+                    ppeEl.style.border = '1px solid #f87171';
+                    const reasoning = (data.ppe_reasoning || []).join('<br/>');
+                    ppeEl.innerHTML = `⚠️ PPE WARNING: ${data.persons_without_ppe} / ${data.persons_detected} missing required safety gear!<br/><br/><span style="font-size:0.9em; font-weight:normal;">${reasoning}</span>`;
+                } else if (data.compliance_status === 'PASS') {
+                    ppeEl.style.backgroundColor = '#f0fdf4';
+                    ppeEl.style.color = '#166534';
+                    ppeEl.style.border = '1px solid #4ade80';
+                    ppeEl.innerHTML = `✅ All ${data.persons_detected} workers are compliant. Great job!`;
+                }
+                
+                labelsContainer.appendChild(ppeEl);
             }
 
             resultsPanel.style.display = 'block';

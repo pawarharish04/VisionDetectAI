@@ -47,7 +47,7 @@ class ResultActivity : AppCompatActivity() {
                 if (res.isSuccessful) {
                     val data = res.body()!!
                     if (data.status == "complete" && data.annotatedUrl != null) {
-                        displayData(data.annotatedUrl, data.result)
+                        displayData(data)
                         break
                     }
                 }
@@ -58,11 +58,27 @@ class ResultActivity : AppCompatActivity() {
         }
     }
 
-    private fun displayData(url: String, resultJson: String?) {
+    private fun displayData(data: com.example.objectdetector.models.DetectionResult) {
         val ivAnnotated = findViewById<ImageView>(R.id.ivAnnotated)
-        Glide.with(this).load(url).into(ivAnnotated)
+        val tvWarning = findViewById<TextView>(R.id.tvWarning)
+        
+        Glide.with(this).load(data.annotatedUrl).into(ivAnnotated)
 
-        val result = Gson().fromJson(resultJson, RekognitionResult::class.java)
+        // Show PPE Compliance Warning
+        if (data.compliance_status == "FAIL") {
+            tvWarning.visibility = View.VISIBLE
+            val reasoningText = data.ppe_reasoning?.joinToString("\n") ?: ""
+            tvWarning.text = "PPE WARNING: ${data.persons_without_ppe} / ${data.persons_detected} missing required safety gear!\n$reasoningText"
+            tvWarning.setBackgroundColor(android.graphics.Color.parseColor("#EF4444")) // Red
+        } else if (data.compliance_status == "PASS") {
+            tvWarning.visibility = View.VISIBLE
+            tvWarning.text = "All ${data.persons_detected} workers are compliant. Great job!"
+            tvWarning.setBackgroundColor(android.graphics.Color.parseColor("#10B981")) // Green
+        } else {
+            tvWarning.visibility = View.GONE
+        }
+
+        val result = Gson().fromJson(data.result, RekognitionResult::class.java)
         result.labels?.let {
             labelsAdapter.updateData(it)
         }

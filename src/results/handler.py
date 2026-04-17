@@ -24,8 +24,10 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 TABLE_NAME = os.environ["TABLE_NAME"]
+BUCKET_NAME = os.environ["BUCKET_NAME"]
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(TABLE_NAME)
+s3_client = boto3.client("s3")
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -74,6 +76,18 @@ def lambda_handler(event: dict, context) -> dict:
             
         item = items[0]
         
+        # S3 is private, so generate a presigned URL if annotatedKey exists
+        if item.get("annotatedKey"):
+            try:
+                presigned_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': BUCKET_NAME, 'Key': item["annotatedKey"]},
+                    ExpiresIn=3600
+                )
+                item["annotatedUrl"] = presigned_url
+            except Exception as e:
+                logger.error(f"Failed to generate presigned URL for {item['annotatedKey']}: {e}")
+
         # Serialize decimal.Decimal to int/float for JSON
         class DecimalEncoder(json.JSONEncoder):
             def default(self, obj):

@@ -62,14 +62,21 @@ def process_record(record: dict) -> None:
         return
 
     labels = result_blob.get("labels", [])
+    ppe_data = result_blob.get("ppe", {})
+    persons = ppe_data.get("Persons", [])
+    ppe_summary = ppe_data.get("Summary", {})
     
-    # Pre-check if any bounding boxes exist
-    has_boxes = any(
+    # Pre-check if any bounding boxes exist in labels OR persons exist in PPE
+    has_label_boxes = any(
         "BoundingBox" in instance 
         for label in labels 
         for instance in label.get("Instances", [])
     )
-    if not has_boxes:
+    has_ppe_boxes = any(
+        "BoundingBox" in person 
+        for person in persons
+    )
+    if not (has_label_boxes or has_ppe_boxes):
         logger.info("No bounding boxes found for %s, using original image as result.", image_key)
         original_url = f"https://{BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{image_key}"
         try:
@@ -102,6 +109,56 @@ def process_record(record: dict) -> None:
             width, height = img.size
             font = ImageFont.load_default()
 
+            # 1. Draw PPE Bounding Boxes (if any)
+            if ppe_summary:
+                persons_with_req = ppe_summary.get("PersonsWithRequiredEquipment", [])
+                persons_without_req = ppe_summary.get("PersonsWithoutRequiredEquipment", [])
+
+                for person in persons:
+                    bbox = person.get("BoundingBox")
+                    if not bbox:
+                        continue
+                    
+                    person_id = person.get("Id")
+                    if person_id in persons_without_req:
+                        box_color = "red"
+                        # Compute detailed missing reason
+                        detected_gear = set()
+                        for bp in person.get("BodyParts", []):
+                            for eq in bp.get("EquipmentDetections", []):
+                                if eq.get("CoversBodyPart", {}).get("Value", False):
+                                    detected_gear.add(eq.get("Type"))
+                        missing = [r for r in ['HEAD_COVER', 'HAND_COVER'] if r not in detected_gear]
+                        missing_text = []
+                        if "HEAD_COVER" in missing: missing_text.append("Hat")
+                        if "HAND_COVER" in missing: missing_text.append("Gloves")
+                        
+                        label_text = f"Missing: {', '.join(missing_text)}" if missing_text else "Missing PPE"
+                    elif person_id in persons_with_req:
+                        box_color = "green"
+                        label_text = "Compliant"
+                    else:
+                        box_color = "orange"
+                        label_text = "Indeterminate"
+
+                    left = bbox["Left"] * width
+                    top = bbox["Top"] * height
+                    box_w = bbox["Width"] * width
+                    box_h = bbox["Height"] * height
+                    right = left + box_w
+                    bottom = top + box_h
+                    
+                    draw.rectangle([left, top, right, bottom], outline=box_color, width=5)
+                    
+                    if hasattr(draw, "textbbox"):
+                        t_left, t_top, t_right, t_bottom = draw.textbbox((left, max(0, top - 20)), label_text, font=font)
+                    else:
+                        t_left, t_top, t_right, t_bottom = left, max(0, top - 20), left + 100, max(0, top)
+                        
+                    draw.rectangle([t_left, t_top, t_right, t_bottom], fill=box_color)
+                    draw.text((t_left, t_top), label_text, fill="white", font=font)
+            
+            # 2. Draw Object Labels
             for label in labels:
                 label_name = label.get("Name", "Unknown")
                 confidence = label.get("Confidence", 0.0)
@@ -118,8 +175,8 @@ def process_record(record: dict) -> None:
                     right = left + box_w
                     bottom = top + box_h
                     
-                    # Draw Bounding Box
-                    draw.rectangle([left, top, right, bottom], outline="red", width=3)
+                    # Draw Bounding Box (generic objects in blue)
+                    draw.rectangle([left, top, right, bottom], outline="blue", width=2)
                     
                     # Draw Label Name + Confidence
                     text = f"{label_name} ({confidence:.1f}%)"
@@ -130,7 +187,7 @@ def process_record(record: dict) -> None:
                     else:
                         t_left, t_top, t_right, t_bottom = left, max(0, top - 15), left + 100, max(0, top)
                         
-                    draw.rectangle([t_left, t_top, t_right, t_bottom], fill="red")
+                    draw.rectangle([t_left, t_top, t_right, t_bottom], fill="blue")
                     draw.text((t_left, t_top), text, fill="white", font=font)
 
             out_buffer = io.BytesIO()

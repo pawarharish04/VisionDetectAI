@@ -193,6 +193,14 @@ Resources:
                   - rekognition:DetectText
                   - rekognition:DetectModerationLabels
                   - rekognition:DetectFaces
+                  - rekognition:DetectProtectiveEquipment
+                Resource: "*"
+
+              # Bedrock
+              - Sid: BedrockAccess
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
                 Resource: "*"
 
               # DynamoDB
@@ -345,6 +353,24 @@ Resources:
             Path: /results/{proxy+}
             Method: GET
 
+  # ── History API Lambda ────────────────────────────────────
+  HistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-history-${Environment}"
+      CodeUri: src/history/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Description: >
+        Returns a list of the most recent 50 detection records for a history dashboard.
+      Events:
+        HistoryApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ObjectDetectionApi
+            Path: /history
+            Method: GET
+
   # ── API Gateway ────────────────────────────────────────────
   ObjectDetectionApi:
     Type: AWS::Serverless::Api
@@ -417,6 +443,10 @@ Outputs:
   PresignEndpoint:
     Description: "Presigned URL endpoint — GET /presign?filename=photo.jpg&contentType=image/jpeg"
     Value: !Sub "https://${ObjectDetectionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/presign"
+
+  HistoryEndpoint:
+    Description: "History endpoint — GET /history"
+    Value: !Sub "https://${ObjectDetectionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/history"
 
   BucketName:
     Description: "S3 bucket name"
