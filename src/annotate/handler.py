@@ -41,28 +41,31 @@ def process_record(record: dict) -> None:
         return
 
     new_image = record.get("dynamodb", {}).get("NewImage", {})
-    
-    # DynamoDB Stream uses typed formats e.g. {"S": "complete"}
-    status = new_image.get("status", {}).get("S")
-    if status != "complete":
+    if not new_image:
+        return
+        
+    from boto3.dynamodb.types import TypeDeserializer
+    deserializer = TypeDeserializer()
+    try:
+        item = {k: deserializer.deserialize(v) for k, v in new_image.items()}
+    except Exception as e:
+        logger.error("Failed to deserialize DynamoDB item: %s", e)
         return
 
-    image_key = new_image.get("imageKey", {}).get("S")
-    timestamp = new_image.get("timestamp", {}).get("N")
-    result_str = new_image.get("result", {}).get("S", "{}")
+    status = item.get("status")
+    if status != "COMPLETE":
+        return
+
+    image_key = item.get("imageKey")
+    timestamp = item.get("timestamp")
 
     if not image_key or not timestamp:
         logger.warning("Missing imageKey or timestamp, skipping.")
         return
 
-    try:
-        result_blob = json.loads(result_str)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse result JSON for %s", image_key)
-        return
-
-    labels = result_blob.get("labels", [])
-    ppe_data = result_blob.get("ppe", {})
+    labels = item.get("labels", [])
+    text_detections = item.get("text_detections", [])
+    ppe_data = item.get("ppe", {})
     persons = ppe_data.get("Persons", [])
     ppe_summary = ppe_data.get("Summary", {})
     

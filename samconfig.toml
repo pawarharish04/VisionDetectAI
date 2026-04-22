@@ -6,11 +6,11 @@ version = 0.1
 
 [default.deploy.parameters]
 stack_name      = "object-detection-dev"
-s3_bucket       = ""                        # filled automatically by deploy script
+s3_bucket       = "aws-sam-cli-managed-default-samclisourcebucket-dgszjhpflh97"
 region          = "us-east-1"
 confirm_changeset = false
 capabilities    = "CAPABILITY_NAMED_IAM"
 parameter_overrides = [
-    "BucketName=object-detection-images-CHANGEME",
+    "BucketName=vision-detect-pipeline-982389018373",
     "Environment=dev"
 ]

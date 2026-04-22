@@ -101,15 +101,15 @@ def main():
         data = json.loads(body)
         print(f"  [Poll {poll_count}] Status: {data.get('status')}")
         
-        if data.get("status") == "complete":
+        if data.get("status") == "COMPLETE":
             break
-        elif data.get("status") == "failed":
+        elif data.get("status") == "FAILED":
             print(f"[-] Detection failed inside Lambda: {data.get('errorMessage')}")
             sys.exit(1)
 
     total_time = time.time() - start_time
 
-    if not data or data.get("status") != "complete":
+    if not data or data.get("status") != "COMPLETE":
         print("[-] Timed out waiting for completion.")
         sys.exit(1)
 
@@ -123,8 +123,7 @@ def main():
         print(f"  ⚠ Annotated URL returned HTTP {status}")
 
     # 5. Extract Details
-    result_blob = json.loads(data.get("result", "{}"))
-    labels = result_blob.get("labels", [])
+    labels = data.get("labels", [])
     top_label = labels[0] if labels else {"Name": "None", "Confidence": 0}
 
     # 6. Final Summary

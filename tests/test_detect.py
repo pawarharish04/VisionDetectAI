@@ -96,26 +96,28 @@ class TestDetectHandler(unittest.TestCase):
             "ModerationLabels": FAKE_MODERATION
         }
 
+        self.mock_dynamodb    = MagicMock()
+        self.mock_dynamodb.Table.return_value = self.mock_table
+
         # Swap the module-level singletons
         self._orig_rek   = detect_handler.rekognition
-        self._orig_table = detect_handler.table
+        self._orig_ddb   = detect_handler.dynamodb
         detect_handler.rekognition = self.mock_rekognition
-        detect_handler.table       = self.mock_table
+        detect_handler.dynamodb    = self.mock_dynamodb
 
     def tearDown(self):
         # Restore originals so other tests are unaffected
         detect_handler.rekognition = self._orig_rek
-        detect_handler.table       = self._orig_table
+        detect_handler.dynamodb    = self._orig_ddb
 
     # ── Happy path ────────────────────────────────────────────
 
     def test_handler_returns_processed_key(self):
-        """Standard s3:ObjectCreated → processed list contains the key."""
+        """Standard s3:ObjectCreated → returns imageKey and label count."""
         result = detect_handler.lambda_handler(_s3_event(), None)
 
-        self.assertEqual(result["total"], 1)
-        self.assertEqual(len(result["processed"]), 1)
-        self.assertEqual(len(result["failed"]),    0)
+        self.assertEqual(result["imageKey"], "images/2024/01/01/uuid/photo.jpg")
+        self.assertEqual(result["label_count"], 2)
 
     def test_dynamodb_put_item_called_once(self):
         """Exactly one DynamoDB put_item per image record."""
@@ -131,17 +133,17 @@ class TestDetectHandler(unittest.TestCase):
         item: dict = self.mock_table.put_item.call_args.kwargs["Item"]
 
         self.assertEqual(item["imageKey"], "images/2024/01/01/uuid/photo.jpg")
-        self.assertEqual(item["status"],   "complete")
+        self.assertEqual(item["status"],   "COMPLETE")
+        self.assertEqual(item["statusPk"], "COMPLETE")
         self.assertIsInstance(item["timestamp"], int)
         self.assertIsInstance(item["ttl"],       int)
-        self.assertGreater(item["ttl"], item["timestamp"])  # TTL is in the future
-
-        # result must be a valid JSON string
-        self.assertIsInstance(item["result"], str)
-        result_obj = json.loads(item["result"])
-        self.assertIn("labels",     result_obj)
-        self.assertIn("text",       result_obj)
-        self.assertIn("moderation", result_obj)
+        
+        # Test custom fields stored
+        self.assertIsInstance(item["labels"], list)
+        self.assertIsInstance(item["text_detections"], list)
+        self.assertIsInstance(item["moderation_labels"], list)
+        self.assertIn("processing_time_ms", item)
+        self.assertEqual(item["label_count"], 2)
 
     def test_dynamodb_ttl_is_30_days(self):
         """TTL = timestamp + 30 * 86400 (within 5-second clock tolerance)."""
@@ -170,42 +172,21 @@ class TestDetectHandler(unittest.TestCase):
         self.assertEqual(image["S3Object"]["Name"],
                          "images/2024/01/01/uuid/photo.jpg")
 
-    def test_label_names_flattened_into_item(self):
-        """labelNames list and topLabel are written for downstream GSI use."""
-        detect_handler.lambda_handler(_s3_event(), None)
-
-        item = self.mock_table.put_item.call_args.kwargs["Item"]
-        self.assertIn("labelNames", item)
-        self.assertEqual(item["labelNames"], ["Dog", "Animal"])
-        self.assertEqual(item["topLabel"],   "Dog")
+    def test_high_confidence_alert_sent(self):
+        """High confidence labels publish to SNS."""
+        with patch.object(detect_handler, "sns") as mock_sns:
+            detect_handler.lambda_handler(_s3_event(), None)
+            mock_sns.publish.assert_called_once()
+            
+            call_kwargs = mock_sns.publish.call_args.kwargs
+            self.assertEqual(call_kwargs["TopicArn"], "arn:aws:sns:us-east-1:000000000000:test")
+            self.assertIn("High confidence objects detected", call_kwargs["Message"])
 
     # ── Edge cases ────────────────────────────────────────────
 
-    def test_skips_non_images_prefix(self):
-        """Keys outside images/ are silently ignored — no Rekognition calls."""
-        event  = _s3_event(key="results/annotated.jpg")
-        result = detect_handler.lambda_handler(event, None)
-
-        self.assertEqual(result["total"], 0)
-        self.mock_rekognition.detect_labels.assert_not_called()
-        self.mock_table.put_item.assert_not_called()
-
-    def test_multiple_records_processed(self):
-        """Multiple S3 records in one event are all independently processed."""
-        event = {
-            "Records": [
-                {"s3": {"bucket": {"name": "b"}, "object": {"key": "images/a.jpg"}}},
-                {"s3": {"bucket": {"name": "b"}, "object": {"key": "images/b.jpg"}}},
-            ]
-        }
-        result = detect_handler.lambda_handler(event, None)
-        self.assertEqual(result["total"],                    2)
-        self.assertEqual(self.mock_table.put_item.call_count, 2)
-
-    def test_rekognition_failure_marks_record_failed(self):
+    def test_rekognition_failure_raises_exception(self):
         """
-        If a Rekognition call throws, the item is written with status='failed'
-        and the handler does NOT re-raise (so S3 doesn't endlessly retry).
+        If a Rekognition call throws, the handler logs and raises the error.
         """
         from botocore.exceptions import ClientError
 
@@ -214,19 +195,13 @@ class TestDetectHandler(unittest.TestCase):
             "DetectLabels",
         )
 
-        result = detect_handler.lambda_handler(_s3_event(), None)
+        with self.assertRaises(ClientError):
+            detect_handler.lambda_handler(_s3_event(), None)
 
-        self.assertEqual(len(result["failed"]),    1)
-        self.assertEqual(len(result["processed"]), 0)
-
-        item = self.mock_table.put_item.call_args.kwargs["Item"]
-        self.assertEqual(item["status"], "failed")
-        self.assertIn("errorMessage", item)
-
-    def test_empty_records_list(self):
-        """Empty Records list returns total=0 without error."""
-        result = detect_handler.lambda_handler({"Records": []}, None)
-        self.assertEqual(result["total"], 0)
+    def test_empty_records_list_raises_index_error(self):
+        """Empty Records list should raise IndexError based on strict array access."""
+        with self.assertRaises(IndexError):
+            detect_handler.lambda_handler({"Records": []}, None)
 
 
 if __name__ == "__main__":

@@ -20,12 +20,12 @@ table = dynamodb.Table(TABLE_NAME) if TABLE_NAME else None
 
 def lambda_handler(event, context):
     try:
-        # We query the GSI1 Index: statusPk="STATUS#complete"
+        # We query the GSI1 Index: statusPk="COMPLETE"
         # Sorted by timestamp (DESC)
         
         response = table.query(
             IndexName='GSI1',
-            KeyConditionExpression=Key('statusPk').eq('STATUS#complete'),
+            KeyConditionExpression=Key('statusPk').eq('COMPLETE'),
             ScanIndexForward=False, # Descending order
             Limit=50 # Top 50 recent results
         )
