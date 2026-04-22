@@ -1,9 +1,7 @@
 # Serverless Object Detection Pipeline
-
 A production-quality AWS serverless architecture for image analysis using Amazon Rekognition.
 
 ## Architecture Overview
-
 ```
 Browser
   │
@@ -16,7 +14,7 @@ API Gateway ──► PresignFunction (Lambda)
   ▼
 S3 images/YYYY/MM/DD/<uuid>/photo.jpg
   │
-  │ s3:ObjectCreated event  [Hour 2]
+  │ s3:ObjectCreated event 
   ▼
 detect-objects Lambda
   ├─► Rekognition.detect_labels()        ─┐
@@ -24,10 +22,9 @@ detect-objects Lambda
   └─► Rekognition.detect_moderation()   ─┘
         │
         ├─► DynamoDB  (DetectionResults table, 30-day TTL)
-        ├─► S3        (annotated image → results/<uuid>.jpg)  [Hour 3]
-        └─► SNS       (high-confidence alert email)           [Hour 4]
+        ├─► S3        (annotated image → results/<uuid>.jpg) 
+        └─► SNS       (high-confidence alert email)          
 ```
-
 ## Known Architecture Decisions
 
 - PPE detection runs in parallel with labels, text, and moderation so one Rekognition round-trip does not block the others. That keeps end-to-end latency lower for each uploaded image while still storing one combined result record in DynamoDB.
@@ -35,7 +32,6 @@ detect-objects Lambda
 - Presigned URLs are used so the browser uploads directly to S3 and Lambda never handles raw image bytes. That reduces Lambda memory and execution time, avoids API Gateway payload limits for large files, and keeps the compute layer focused on orchestration instead of file transfer.
 
 ## Project Structure
-
 ```
 objectDetection/
 ├── template.yaml              # SAM / CloudFormation — all AWS resources
@@ -44,7 +40,7 @@ objectDetection/
 │
 ├── src/
 │   └── presign/
-│       ├── handler.py         # ✅ Hour 1 — Presigned URL Lambda
+│       ├── handler.py         #  — Presigned URL Lambda
 │       └── requirements.txt
 │
 ├── scripts/
@@ -56,10 +52,9 @@ objectDetection/
     └── test_presign.py        # Unit tests (pytest, no AWS needed)
 ```
 
-## What's Built (Hour 1)
+## What's Built 
 
 | Resource | Details |
-|---|---|
 | **S3 Bucket** | `images/` and `results/` prefixes, versioning on, lifecycle rules |
 | **CORS** | `PUT` allowed from `*`, `Content-Type` and `Authorization` headers |
 | **IAM Role** | S3, Rekognition, DynamoDB, SNS, CloudWatch permissions (least privilege) |
@@ -152,13 +147,12 @@ await fetch(uploadUrl, {
   body: file,                    // raw File object — no FormData
 });
 
-// Poll for results (or use WebSocket in Hour 4)
+// Poll for results (or use WebSocket in 
 const results = await fetch(`/results/${encodeURIComponent(imageKey)}`).then(r => r.json());
 ```
 
 
  Lambda | Details |
-|
 | `detect-objects` | S3 trigger → parallel Rekognition → DynamoDB |
 | `annotate-image` | Pillow bounding boxes → `results/` in S3 |
 | Frontend | HTML drag-and-drop with presigned upload + polling |
