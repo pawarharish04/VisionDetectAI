@@ -156,16 +156,15 @@ await fetch(uploadUrl, {
 const results = await fetch(`/results/${encodeURIComponent(imageKey)}`).then(r => r.json());
 ```
 
-## What's Coming (Hours 2–4)
 
-| Hour | Lambda | Details |
-|---|---|---|
-| 2 | `detect-objects` | S3 trigger → parallel Rekognition → DynamoDB |
-| 3 | `annotate-image` | Pillow bounding boxes → `results/` in S3 |
-| 3 | Frontend | HTML drag-and-drop with presigned upload + polling |
-| 4 | Notifications | SNS email when confidence > 90% |
-| 4 | Dead-letter queue | SQS DLQ, 3 retries |
-| 4 | CloudWatch | Dashboard: invocations, p99 latency, error rate |
+ Lambda | Details |
+|
+| `detect-objects` | S3 trigger → parallel Rekognition → DynamoDB |
+| `annotate-image` | Pillow bounding boxes → `results/` in S3 |
+| Frontend | HTML drag-and-drop with presigned upload + polling |
+| Notifications | SNS email when confidence > 90% |
+| Dead-letter queue | SQS DLQ, 3 retries |
+| CloudWatch | Dashboard: invocations, p99 latency, error rate |
 
 ## Cost Estimate (light usage)
 
