@@ -244,6 +244,11 @@
 
     <h1>AI Vision</h1>
     <p class="subtitle">Drag & drop an image to run serverless object detection</p>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 auto 1rem; padding: 0.75rem 1rem; max-width: 1120px; border: 1px solid var(--border-color); border-radius: var(--radius); background: rgba(255,255,255,0.04);">
+        <label for="apiBaseUrlInput" style="font-weight: 600; white-space: nowrap;">API Gateway URL</label>
+        <input id="apiBaseUrlInput" type="url" placeholder="https://<api-id>.execute-api.us-east-1.amazonaws.com/dev" style="flex: 1 1 320px; min-width: 0; padding: 0.65rem 0.85rem; border-radius: 0.5rem; border: 1px solid var(--border-color); background: rgba(15, 23, 42, 0.65); color: var(--text-main);" />
+        <p style="margin: 0; color: var(--text-muted); font-size: 0.875rem;">Saved automatically. Leave blank to use the current origin.</p>
+    </div>
 
     <!-- Navigation Tabs -->
     <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem;">
@@ -294,13 +299,7 @@
     </div>
 
     <script>
-        // =====================================================================
-        // AWS SERVERLESS API CONFIGURATION
-        // Replace this URL once you deploy the API via SAM / CloudFormation.
-        // It should look like: https://<api-id>.execute-api.us-east-1.amazonaws.com/dev
-        // =====================================================================
-        const API_BASE_URL = "https://yo5zq9f8qj.execute-api.us-east-1.amazonaws.com/dev";
-        // =====================================================================
+        const API_BASE_URL = localStorage.getItem("apiBaseUrl") || "";
 
         const UPLOAD_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 
@@ -311,6 +310,7 @@
         const loadingStatus = document.getElementById('loadingStatus');
         const statusMessage = document.getElementById('statusMessage');
         const errorAlert = document.getElementById('errorAlert');
+        const apiBaseUrlInput = document.getElementById('apiBaseUrlInput');
         
         const resultsPanel = document.getElementById('resultsPanel');
         const annotatedImage = document.getElementById('annotatedImage');
@@ -322,10 +322,34 @@
         // Tabs
         const tabUploadBtn = document.getElementById('tabUploadBtn');
         const tabHistoryBtn = document.getElementById('tabHistoryBtn');
-        const uploadPanel = document.getElementById('uploadPanel');
         const historyPanel = document.getElementById('historyPanel');
         const historyLoading = document.getElementById('historyLoading');
         const historyList = document.getElementById('historyList');
+
+        apiBaseUrlInput.value = API_BASE_URL;
+
+        function normalizeApiBaseUrl(value) {
+            return value.trim().replace(/\/+$/, '');
+        }
+
+        function getApiBaseUrl() {
+            return normalizeApiBaseUrl(apiBaseUrlInput.value || localStorage.getItem("apiBaseUrl") || API_BASE_URL);
+        }
+
+        function buildApiUrl(path) {
+            const baseUrl = getApiBaseUrl();
+            return baseUrl ? `${baseUrl}${path}` : path;
+        }
+
+        apiBaseUrlInput.addEventListener('input', (event) => {
+            const nextValue = event.target.value.trim();
+
+            if (nextValue) {
+                localStorage.setItem('apiBaseUrl', nextValue);
+            } else {
+                localStorage.removeItem('apiBaseUrl');
+            }
+        });
 
         tabUploadBtn.addEventListener('click', () => {
             tabUploadBtn.style.background = 'var(--primary)';
@@ -365,7 +389,7 @@
             historyList.innerHTML = '';
             
             try {
-                const response = await fetch(`${API_BASE_URL}/history`);
+                const response = await fetch(buildApiUrl('/history'));
                 const data = await response.json();
                 historyLoading.style.display = 'none';
 
@@ -449,10 +473,6 @@
             if (file.size > UPLOAD_MAX_BYTES) {
                 return showError("File is too large. Max size is 20MB.");
             }
-            if (API_BASE_URL === "INSERT_API_GATEWAY_URL_HERE") {
-                return showError("API_BASE_URL is not configured. Edit index.html and update line 185.");
-            }
-
             try {
                 // 1. Enter Loading State
                 dropZone.style.display = 'none';
@@ -465,7 +485,7 @@
                     contentType: file.type
                 });
                 
-                const presignUrl = `${API_BASE_URL}/presign?${presignParams}`;
+                const presignUrl = `${buildApiUrl('/presign')}?${presignParams}`;
                 const presignRes = await fetch(presignUrl);
                 
                 if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.statusText}`);
@@ -513,7 +533,7 @@
                 try {
                     // Requires GET /results/{imageKey} endpoint in API Gateway
                     const encodedKey = encodeURIComponent(imageKey);
-                    const res = await fetch(`${API_BASE_URL}/results/${encodedKey}`);
+                    const res = await fetch(buildApiUrl(`/results/${encodedKey}`));
                     
                     if (res.status === 404) {
                         // Not ready yet — gradually increase backoff interval
@@ -526,15 +546,16 @@
                     if (!res.ok) throw new Error(`Status API error: ${res.statusText}`);
                     
                     const data = await res.json();
+                    const normalizedStatus = String(data.status || '').toLowerCase();
                     
-                    if (data.status === 'failed') {
+                    if (normalizedStatus === 'failed') {
                         loadingStatus.style.display = 'none';
                         dropZone.style.display = 'block';
                         showError("Lambda detection failed: " + (data.errorMessage || "Unknown error"));
                         return;
                     }
 
-                    if (data.status === 'complete' && data.annotatedUrl) {
+                    if (normalizedStatus === 'complete' && data.annotatedUrl) {
                         loadingStatus.style.display = 'none';
                         displayResults(data);
                         return; // done!
@@ -561,10 +582,52 @@
             
             // Render Labels
             labelsContainer.innerHTML = '';
-            
-            // Ensure result JSON is parsed (DynamoDB might store it as a string)
-            const resultObj = typeof data.result === 'string' ? JSON.parse(data.result) : (data.result || {});
-            const labels = resultObj.labels || [];
+            const labels = Array.isArray(data.labels) ? data.labels : [];
+            const textDetections = Array.isArray(data.text_detections)
+                ? [...new Set(data.text_detections.map(item => item?.DetectedText).filter(Boolean))]
+                : [];
+            const moderationLabels = Array.isArray(data.moderation_labels)
+                ? data.moderation_labels
+                    .map(item => item?.Name ? `${item.Name}${typeof item.Confidence === 'number' ? ` (${item.Confidence.toFixed(1)}%)` : ''}` : '')
+                    .filter(Boolean)
+                : [];
+            const ppeComplianceStatus = data.ppe_compliance_status;
+            const ppePayload = data.ppe || data.ppe_raw || {};
+            const personsDetected = Array.isArray(ppePayload.Persons) ? ppePayload.Persons.length : 0;
+            const personsWithoutPpe = Number(data.persons_without_ppe || 0);
+
+            const appendResultSection = (title, items) => {
+                if (items.length === 0) return;
+
+                const section = document.createElement('div');
+                section.style.gridColumn = '1/-1';
+                section.style.marginTop = '1rem';
+
+                const heading = document.createElement('h4');
+                heading.textContent = title;
+                heading.style.margin = '0 0 0.75rem 0';
+                heading.style.fontSize = '0.95rem';
+
+                const list = document.createElement('div');
+                list.style.display = 'flex';
+                list.style.flexWrap = 'wrap';
+                list.style.gap = '0.5rem';
+
+                items.forEach(item => {
+                    const chip = document.createElement('span');
+                    chip.textContent = item;
+                    chip.style.padding = '0.45rem 0.75rem';
+                    chip.style.borderRadius = '999px';
+                    chip.style.border = '1px solid var(--border-color)';
+                    chip.style.background = 'rgba(255,255,255,0.05)';
+                    chip.style.fontSize = '0.9rem';
+                    list.appendChild(chip);
+                });
+
+                section.appendChild(heading);
+                section.appendChild(list);
+                labelsContainer.appendChild(section);
+            };
             
             if (labels.length === 0) {
                 labelsContainer.innerHTML = '<p style="grid-column: 1/-1; color: var(--text-muted);">No objects detected.</p>';
@@ -582,9 +645,12 @@
                     labelsContainer.appendChild(el);
                 });
             }
+
+            appendResultSection('Detected Text', textDetections);
+            appendResultSection('Moderation Labels', moderationLabels);
             
             // Render PPE Status if available
-            if (data.compliance_status) {
+            if (ppeComplianceStatus && ppeComplianceStatus !== 'N/A') {
                 const ppeEl = document.createElement('div');
                 ppeEl.style.gridColumn = '1/-1';
                 ppeEl.style.marginTop = '1rem';
@@ -592,17 +658,19 @@
                 ppeEl.style.borderRadius = 'var(--radius)';
                 ppeEl.style.fontWeight = '500';
                 
-                if (data.compliance_status === 'FAIL') {
+                if (ppeComplianceStatus === 'NON_COMPLIANT') {
                     ppeEl.style.backgroundColor = '#fef2f2';
                     ppeEl.style.color = '#991b1b';
                     ppeEl.style.border = '1px solid #f87171';
-                    const reasoning = (data.ppe_reasoning || []).join('<br/>');
-                    ppeEl.innerHTML = `⚠️ PPE WARNING: ${data.persons_without_ppe} / ${data.persons_detected} missing required safety gear!<br/><br/><span style="font-size:0.9em; font-weight:normal;">${reasoning}</span>`;
-                } else if (data.compliance_status === 'PASS') {
+                    const detectedCopy = personsDetected > 0 ? ` out of ${personsDetected} detected worker${personsDetected === 1 ? '' : 's'}` : '';
+                    ppeEl.innerHTML = `PPE WARNING: ${personsWithoutPpe} worker${personsWithoutPpe === 1 ? '' : 's'} missing required safety gear${detectedCopy}.`;
+                } else if (ppeComplianceStatus === 'COMPLIANT') {
                     ppeEl.style.backgroundColor = '#f0fdf4';
                     ppeEl.style.color = '#166534';
                     ppeEl.style.border = '1px solid #4ade80';
-                    ppeEl.innerHTML = `✅ All ${data.persons_detected} workers are compliant. Great job!`;
+                    ppeEl.innerHTML = personsDetected > 0
+                        ? `All ${personsDetected} detected worker${personsDetected === 1 ? '' : 's'} are compliant.`
+                        : 'PPE check passed.';
                 }
                 
                 labelsContainer.appendChild(ppeEl);

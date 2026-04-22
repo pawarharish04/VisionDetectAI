@@ -266,6 +266,10 @@ Resources:
       CodeUri: src/presign/
       Handler: handler.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          PRESIGN_EXPIRY_SECONDS: "300"
+          MAX_CONTENT_LENGTH_MB: "20"
       Description: >
         Returns a presigned S3 PUT URL so the browser uploads
         directly to S3 — Lambda never touches the binary.
@@ -483,4 +487,3 @@ Outputs:
     Value: !Ref AnnotateFunction
     Export:
       Name: !Sub "ObjectDetectionAnnotateFunction-${Environment}"
-

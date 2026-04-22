@@ -28,6 +28,12 @@ detect-objects Lambda
         └─► SNS       (high-confidence alert email)           [Hour 4]
 ```
 
+## Known Architecture Decisions
+
+- PPE detection runs in parallel with labels, text, and moderation so one Rekognition round-trip does not block the others. That keeps end-to-end latency lower for each uploaded image while still storing one combined result record in DynamoDB.
+- DynamoDB Streams trigger annotation as a separate async step so detection and image drawing stay decoupled. That pattern makes the pipeline more resilient, keeps the first write lightweight, and allows annotation retries or future downstream consumers without changing the upload flow.
+- Presigned URLs are used so the browser uploads directly to S3 and Lambda never handles raw image bytes. That reduces Lambda memory and execution time, avoids API Gateway payload limits for large files, and keeps the compute layer focused on orchestration instead of file transfer.
+
 ## Project Structure
 
 ```
