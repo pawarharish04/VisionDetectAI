@@ -28,7 +28,7 @@
 
 param(
     [string]$StackName       = "object-detection-dev",
-    [string]$BucketName      = "object-detection-img-982389018373",
+    [string]$BucketName      = "vision-detect-982389018373-v2",
     [string]$Region          = "us-east-1",
     [string]$Environment     = "dev",
     [string]$SamBucket       = "",       # SAM deployment artifacts bucket (auto-created if empty)

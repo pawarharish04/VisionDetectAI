@@ -11,6 +11,6 @@ region          = "us-east-1"
 confirm_changeset = false
 capabilities    = "CAPABILITY_NAMED_IAM"
 parameter_overrides = [
-    "BucketName=vision-detect-pipeline-982389018373",
+    "BucketName=vision-detect-982389018373-v2",
     "Environment=dev"
 ]

@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
 Description: >
-  Serverless Object Detection Pipeline
-  S3 bucket, IAM role, presign Lambda, detect Lambda, annotate Lambda, API Gateway
+  VisionDetectAI — Serverless Object Detection + Live Video Analysis Pipeline
+  S3 bucket, IAM role, presign Lambda, detect Lambda, annotate Lambda, API Gateway,
+  Kinesis stream, image-processor Lambda, frame-fetcher Lambda
 
 # ──────────────────────────────────────────────────────────────
 # Parameters
@@ -90,6 +91,10 @@ Resources:
             Status: Enabled
             Prefix: images/
             ExpirationInDays: 30
+          - Id: ExpireVideoFrames
+            Status: Enabled
+            Prefix: frames/
+            ExpirationInDays: 30
 
       # Block public access — objects are only reachable via presigned URLs
       PublicAccessBlockConfiguration:
@@ -118,6 +123,8 @@ Resources:
           AttributeType: N
         - AttributeName: statusPk
           AttributeType: S
+        - AttributeName: processed_timestamp
+          AttributeType: N
 
       KeySchema:
         - AttributeName: imageKey
@@ -134,13 +141,21 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+        - IndexName: processed-timestamp-index
+          KeySchema:
+            - AttributeName: statusPk
+              KeyType: HASH
+            - AttributeName: processed_timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
 
       # TTL so old records self-delete
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
 
-      # Stream for WebSocket push (Hour 4)
+      # Stream for WebSocket push
       StreamSpecification:
         StreamViewType: NEW_IMAGE
 
@@ -184,6 +199,7 @@ Resources:
                   - !Sub "arn:aws:s3:::${BucketName}"
                   - !Sub "arn:aws:s3:::${BucketName}/images/*"
                   - !Sub "arn:aws:s3:::${BucketName}/results/*"
+                  - !Sub "arn:aws:s3:::${BucketName}/frames/*"
 
               # Rekognition
               - Sid: RekognitionAccess
@@ -222,6 +238,7 @@ Resources:
                   - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/DetectionResults-${Environment}/stream/*"
                   - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/DetectionResults-${Environment}/index/*"
 
+
               # SNS — publish high-confidence alerts
               - Sid: SNSAccess
                 Effect: Allow
@@ -248,7 +265,7 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: !Sub "DetectionAlerts-${Environment}"
-      DisplayName: "Object Detection High-Confidence Alerts"
+      DisplayName: "VisionDetectAI Alerts (static + live-stream)"
 
   DetectionAlertsEmailSubscription:
     Type: AWS::SNS::Subscription
@@ -257,6 +274,63 @@ Resources:
       TopicArn: !Ref DetectionAlertsTopic
       Protocol: email
       Endpoint: !Ref NotificationEmail
+
+  # ── Ingestion Lambda (Direct URL) ───────────────────────────
+  # Replaces Kinesis for account compatibility.
+  ImageProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-image-processor-${Environment}"
+      CodeUri: src/image_processor/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 40
+      MemorySize: 256
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: BUFFERED
+      Description: >
+        Ingests video frames via direct POST, runs Rekognition (labels/text/moderation)
+        in parallel, stores enriched metadata in DynamoDB, uploads raw frame to S3,
+        and publishes SNS alerts when watch-list objects are detected.
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref ImagesBucket
+          DDB_TABLE: !Ref DetectionResultsTable
+          SNS_TOPIC_ARN: !Ref DetectionAlertsTopic
+          REKOG_MAX_LABELS: "20"
+          REKOG_MIN_CONF: "50"
+          LABEL_WATCH_LIST: "Person,Car,Weapon,Fire,Knife"
+          LABEL_WATCH_MIN_CONF: "85"
+          TTL_DAYS: "30"
+
+  # ── Frame Fetcher Lambda (API Gateway GET /enrichedframe) ───
+  FrameFetcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "object-detection-frame-fetcher-${Environment}"
+      CodeUri: src/frame_fetcher/
+      Handler: handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 10
+      Description: >
+        Returns the N most-recent enriched video frames (with pre-signed S3 URLs)
+        to the Web UI live-feed panel via GET /enrichedframe.
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref ImagesBucket
+          DDB_TABLE: !Ref DetectionResultsTable
+          DDB_GSI_NAME: "processed_timestamp-index"
+          FETCH_HORIZON_HRS: "24"
+          FETCH_LIMIT: "10"
+          PRESIGNED_URL_EXPIRY: "1800"
+      Events:
+        EnrichedFrameApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ObjectDetectionApi
+            Path: /enrichedframe
+            Method: GET
 
   # ── Presign Lambda ─────────────────────────────────────────
   PresignFunction:
@@ -487,3 +561,23 @@ Outputs:
     Value: !Ref AnnotateFunction
     Export:
       Name: !Sub "ObjectDetectionAnnotateFunction-${Environment}"
+
+  IngestionUrl:
+    Description: "Ingestion URL for the video capture client (POST)"
+    Value: !GetAtt ImageProcessorFunctionUrl.FunctionUrl
+
+  EnrichedFrameEndpoint:
+    Description: "Live-feed endpoint — GET /enrichedframe"
+    Value: !Sub "https://${ObjectDetectionApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/enrichedframe"
+
+  ImageProcessorFunctionName:
+    Description: "Kinesis-triggered frame processing Lambda"
+    Value: !Ref ImageProcessorFunction
+    Export:
+      Name: !Sub "ObjectDetectionImageProcessorFunction-${Environment}"
+
+  FrameFetcherFunctionName:
+    Description: "Frame fetcher Lambda (serves /enrichedframe)"
+    Value: !Ref FrameFetcherFunction
+    Export:
+      Name: !Sub "ObjectDetectionFrameFetcherFunction-${Environment}"

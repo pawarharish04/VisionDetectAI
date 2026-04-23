@@ -3,694 +3,2064 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Vision — Serverless Object Detection</title>
+    <link rel="icon" href="data:,">
+    <title>ReckoVision — Industrial Safety AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* ── Modern Dark Theme & Typography ── */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
         :root {
-            --bg-color: #0f172a;
-            --surface-color: rgba(30, 41, 59, 0.7);
-            --border-color: rgba(255, 255, 255, 0.1);
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --error: #ef4444;
-            --success: #10b981;
+            --bg: #060a10;
+            --surface: rgba(13, 20, 33, 0.85);
+            --surface2: rgba(20, 30, 50, 0.6);
+            --border: rgba(56, 189, 248, 0.12);
+            --border-bright: rgba(56, 189, 248, 0.35);
+            --primary: #38bdf8;
+            --primary-dim: rgba(56, 189, 248, 0.15);
+            --danger: #f43f5e;
+            --danger-dim: rgba(244, 63, 94, 0.15);
+            --success: #10d97a;
+            --success-dim: rgba(16, 217, 122, 0.12);
+            --warning: #f59e0b;
+            --warning-dim: rgba(245, 158, 11, 0.15);
+            --text: #e2eaf6;
+            --text-muted: #5a7090;
+            --text-dim: #8aa0bc;
+            --mono: 'Space Mono', monospace;
+            --sans: 'DM Sans', sans-serif;
+            --radius: 10px;
+            --glow: 0 0 24px rgba(56, 189, 248, 0.15);
+            --page-pad: clamp(1rem, 2vw, 2rem);
+            --panel-pad: clamp(1rem, 2vw, 2rem);
+            --side-pad: clamp(1rem, 1.5vw, 1.5rem);
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
-            color: var(--text-main);
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 2rem 1rem;
+            overflow-x: hidden;
+            font-size: clamp(14px, 0.25vw + 13px, 16px);
         }
 
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, #60a5fa, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-align: center;
+        /* Grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
         }
 
-        p.subtitle {
-            color: var(--text-muted);
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 800px;
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-
-        /* ── Glassmorphism Panels ── */
-        .glass-panel {
-            background: var(--surface-color);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--border-color);
-            border-radius: 1rem;
-            padding: 2rem;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-        }
-
-        /* ── Drag & Drop Area ── */
-        .upload-area {
-            border: 2px dashed var(--border-color);
-            border-radius: 0.75rem;
-            padding: 3rem 2rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        /* ── Header ── */
+        .header {
             position: relative;
-            overflow: hidden;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1.25rem var(--page-pad);
+            border-bottom: 1px solid var(--border);
+            background: rgba(6,10,16,0.9);
+            backdrop-filter: blur(20px);
+            flex-wrap: wrap;
         }
 
-        .upload-area:hover, .upload-area.drag-over {
-            border-color: var(--primary);
-            background: rgba(59, 130, 246, 0.05); /* very light primary */
-            transform: scale(1.02);
-        }
-        
-        .upload-area input[type="file"] {
-            display: none;
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
         }
 
-        .upload-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            display: block;
+        .logo-icon {
+            width: 36px; height: 36px;
+            background: var(--primary);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+        }
+
+        .logo-text {
+            font-family: var(--mono);
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.5px;
+        }
+
+        .logo-text span { color: var(--primary); }
+
+        .header-badge {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            padding: 0.3rem 0.65rem;
+            border: 1px solid var(--border-bright);
+            border-radius: 999px;
+            color: var(--primary);
+            letter-spacing: 1px;
+        }
+
+        /* ── Live Stats Bar ── */
+        .stats-bar {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            background: rgba(6,10,16,0.7);
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scroll-snap-type: x proximity;
+            scrollbar-width: thin;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.65rem 1.25rem;
+            border-right: 1px solid var(--border);
+            white-space: nowrap;
+            flex-shrink: 0;
+            scroll-snap-align: start;
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: 0.65rem;
             color: var(--text-muted);
-            transition: color 0.3s;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
-        
-        .upload-area:hover .upload-icon {
+
+        .stat-value {
+            font-family: var(--mono);
+            font-size: 0.9rem;
+            font-weight: 700;
             color: var(--primary);
         }
 
-        /* ── Status & Loaders ── */
-        .status-container {
+        .stat-value.danger { color: var(--danger); }
+        .stat-value.success { color: var(--success); }
+
+        .live-dot {
+            width: 7px; height: 7px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        /* ── API Config Bar ── */
+        .config-bar {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem var(--page-pad);
+            background: rgba(10,16,26,0.8);
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .config-label {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .config-input {
+            flex: 1;
+            width: 100%;
+            min-width: min(100%, 280px);
+            padding: 0.5rem 0.85rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: rgba(56,189,248,0.04);
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .config-input:focus { border-color: var(--border-bright); }
+
+        /* ── Layout ── */
+        .app-layout {
+            position: relative;
+            z-index: 5;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) clamp(300px, 31vw, 380px);
+            gap: 0;
+            min-height: calc(100vh - 160px);
+            width: min(100%, 1680px);
+            margin: 0 auto;
+        }
+
+        .main-panel {
+            padding: var(--panel-pad);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            min-width: 0;
+        }
+
+        .side-panel {
+            padding: var(--side-pad);
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            background: rgba(6,10,16,0.5);
+            min-width: 0;
+        }
+
+        /* ── Panel headers ── */
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .panel-title {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        /* ── Upload Zone ── */
+        .upload-zone {
+            border: 1.5px dashed var(--border-bright);
+            border-radius: var(--radius);
+            padding: clamp(2rem, 6vw, 3.5rem) clamp(1rem, 3vw, 2rem);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: rgba(56,189,248,0.02);
+            position: relative;
+            overflow: hidden;
+            min-height: clamp(220px, 36vw, 320px);
+        }
+
+        .upload-zone::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, rgba(56,189,248,0.06) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .upload-zone:hover, .upload-zone.drag-over {
+            border-color: var(--primary);
+            background: rgba(56,189,248,0.05);
+        }
+
+        .upload-zone:hover::before, .upload-zone.drag-over::before { opacity: 1; }
+
+        .upload-zone input[type="file"] { display: none; }
+
+        .upload-icon-wrap {
+            width: 64px; height: 64px;
+            border: 1.5px solid var(--border-bright);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1.25rem;
+            font-size: 1.75rem;
+            background: var(--primary-dim);
+            transition: transform 0.2s;
+        }
+
+        .upload-zone:hover .upload-icon-wrap { transform: scale(1.05); }
+
+        .upload-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .upload-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        /* ── Progress Bar ── */
+        .progress-wrap {
+            display: none;
+            margin-top: 1rem;
+        }
+
+        .progress-bar-bg {
+            height: 4px;
+            background: var(--border);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #818cf8);
+            border-radius: 999px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .progress-label {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        /* ── Loading ── */
+        .loading-state {
             display: none;
             flex-direction: column;
             align-items: center;
             gap: 1rem;
-            padding: 2rem 0;
-        }
-
-        .status-text {
-            color: var(--text-muted);
-            font-weight: 500;
+            padding: 3rem;
         }
 
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(255,255,255,0.1);
+            width: 44px; height: 44px;
+            border: 3px solid var(--border);
             border-top-color: var(--primary);
             border-radius: 50%;
-            animation: spin 1s linear infinite;
+            animation: spin 0.8s linear infinite;
         }
 
-        @keyframes spin { 
-            to { transform: rotate(360deg); } 
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
         }
 
-        /* ── Results Area ── */
-        .results-area {
+        /* ── Violation Banner ── */
+        .violation-banner {
             display: none;
-            animation: fadeIn 0.5s ease-out;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--danger);
+            background: var(--danger-dim);
+            animation: flashBorder 1.5s ease-in-out 3;
         }
 
-        .image-preview {
+        @keyframes flashBorder {
+            0%, 100% { border-color: var(--danger); }
+            50% { border-color: rgba(244,63,94,0.3); }
+        }
+
+        .violation-icon { font-size: 1.5rem; flex-shrink: 0; }
+
+        .violation-title {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--danger);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .violation-msg { font-size: 0.85rem; color: #fca5a5; margin-top: 0.2rem; }
+
+        .compliant-banner {
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--success);
+            background: var(--success-dim);
+        }
+
+        .compliant-title {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--success);
+            letter-spacing: 1px;
+        }
+
+        .compliant-msg { font-size: 0.85rem; color: #6ee7b7; margin-top: 0.2rem; }
+
+        /* ── Risk Dashboard ── */
+        .risk-dashboard {
+            display: none;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+        }
+
+        .risk-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem;
+            text-align: center;
+        }
+
+        .risk-card-label {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+
+        .risk-card-value {
+            font-family: var(--mono);
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .risk-card-value.green { color: var(--success); }
+        .risk-card-value.red { color: var(--danger); }
+        .risk-card-value.yellow { color: var(--warning); }
+        .risk-card-value.blue { color: var(--primary); }
+
+        .risk-level-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-top: 0.4rem;
+        }
+
+        .risk-level-badge.low { background: var(--success-dim); color: var(--success); border: 1px solid var(--success); }
+        .risk-level-badge.medium { background: var(--warning-dim); color: var(--warning); border: 1px solid var(--warning); }
+        .risk-level-badge.high { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
+
+        /* ── Results Image ── */
+        .result-image-wrap {
+            display: none;
+            position: relative;
+        }
+
+        .result-image {
             width: 100%;
-            border-radius: 0.5rem;
-            border: 1px solid var(--border-color);
-            margin-bottom: 1.5rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            cursor: zoom-in;
             display: block;
+            max-height: min(62vh, 760px);
+            object-fit: contain;
+            background: rgba(20, 30, 50, 0.35);
+        }
+
+        .image-tag {
+            position: absolute;
+            top: 10px; right: 10px;
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: 1px;
+            padding: 0.3rem 0.6rem;
+            background: rgba(6,10,16,0.85);
+            border: 1px solid var(--border-bright);
+            border-radius: 6px;
+            color: var(--primary);
+        }
+
+        /* ── Confidence Slider ── */
+        .slider-section {
+            display: none;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .slider-label {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .slider-value {
+            font-family: var(--mono);
+            font-size: 0.8rem;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 999px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            border: 2px solid var(--bg);
+            box-shadow: 0 0 8px rgba(56,189,248,0.5);
+        }
+
+        /* ── Labels Grid ── */
+        .labels-section { display: none; }
+
+        .filter-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .filter-btn {
+            padding: 0.3rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            font-family: var(--mono);
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-btn.active {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: var(--primary-dim);
         }
 
         .labels-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+            gap: 0.6rem;
         }
 
         .label-chip {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            padding: 0.65rem 1rem;
+            border-radius: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             position: relative;
             overflow: hidden;
+            transition: opacity 0.2s, transform 0.2s;
         }
-        
-        /* Confidence background bar */
+
+        .label-chip.hidden { display: none; }
+
         .label-chip::before {
             content: '';
             position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            background: rgba(59, 130, 246, 0.2);
-            z-index: 0;
-            width: var(--confidence);
+            left: 0; top: 0; bottom: 0;
+            background: rgba(56,189,248,0.08);
+            width: var(--conf, 0%);
         }
 
         .label-name {
+            font-size: 0.85rem;
             font-weight: 600;
             z-index: 1;
         }
 
-        .label-confidence {
+        .label-conf {
+            font-family: var(--mono);
+            font-size: 0.8rem;
             color: var(--primary);
-            font-variant-numeric: tabular-nums;
             font-weight: 700;
             z-index: 1;
         }
 
-        /* ── Alerts ── */
-        .alert {
-            display: none;
-            padding: 1rem;
-            border-radius: 0.5rem;
+        /* ── Text & Moderation sections ── */
+        .extra-section {
             margin-top: 1rem;
-            font-weight: 500;
-        }
-        .alert.error {
-            display: block;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--error);
-            color: #fca5a5;
         }
 
-        /* ── Image Zoom Modal ── */
+        .extra-title {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.6rem;
+        }
+
+        .pill-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .pill {
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text-dim);
+        }
+
+        .pill.mod {
+            border-color: var(--warning);
+            background: var(--warning-dim);
+            color: var(--warning);
+        }
+
+        /* ── Action Buttons ── */
+        .actions-row {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.65rem 1.25rem;
+            border-radius: 8px;
+            border: none;
+            font-family: var(--sans);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            justify-content: center;
+            min-height: 44px;
+        }
+
+        .actions-row .btn {
+            flex: 1 1 180px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: #060a10;
+        }
+
+        .btn-primary:hover { background: #7dd3fc; }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border-bright);
+            color: var(--text-dim);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-danger {
+            background: transparent;
+            border: 1px solid var(--danger);
+            color: var(--danger);
+        }
+
+        /* ── Side Panel ── */
+        .side-section {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: clamp(0.9rem, 1.8vw, 1rem);
+            min-width: 0;
+        }
+
+        .side-section-title {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Processing info */
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+        }
+
+        .meta-row:last-child { border-bottom: none; }
+        .meta-key { color: var(--text-muted); }
+        .meta-val { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); }
+
+        /* History */
+        .history-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            padding: 0.65rem 0;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.15s;
+            border-radius: 6px;
+        }
+
+        .history-item:last-child { border-bottom: none; }
+
+        .history-thumb {
+            width: 44px; height: 44px;
+            border-radius: 6px;
+            object-fit: cover;
+            border: 1px solid var(--border);
+            flex-shrink: 0;
+            background: var(--surface2);
+        }
+
+        .history-info { flex: 1; min-width: 0; }
+
+        .history-labels {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-time {
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        .history-badge {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            padding: 0.2rem 0.45rem;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .history-badge.pass { background: var(--success-dim); color: var(--success); }
+        .history-badge.fail { background: var(--danger-dim); color: var(--danger); }
+        .history-badge.na { background: var(--border); color: var(--text-muted); }
+
+        /* ── Image Key Copy ── */
+        .imagekey-box {
+            display: none;
+            background: rgba(56,189,248,0.04);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            word-break: break-all;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .imagekey-box:hover { border-color: var(--border-bright); }
+
+        /* ── Error ── */
+        .error-box {
+            display: none;
+            padding: 0.85rem 1rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--danger);
+            background: var(--danger-dim);
+            color: #fca5a5;
+            font-size: 0.85rem;
+        }
+
+        /* ── Zoom Modal ── */
         .zoom-modal {
             display: none;
             position: fixed;
+            inset: 0;
             z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.92);
             justify-content: center;
             align-items: center;
             cursor: zoom-out;
         }
-        .zoom-content {
-            max-width: 90%;
-            max-height: 90%;
+
+        .zoom-img {
+            max-width: 92%;
+            max-height: 92%;
             object-fit: contain;
-            border-radius: 8px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border-bright);
         }
-        .image-preview { margin-top: 1rem; border-radius: var(--radius); margin-bottom: 2rem; object-fit: contain; width: 100%; max-height: 500px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); cursor: zoom-in; }
+
+        /* ── Export JSON ── */
+        .export-data {
+            display: none;
+        }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+        /* ── Responsive ── */
+        @media (max-width: 1180px) {
+            .app-layout { grid-template-columns: minmax(0, 1fr) minmax(280px, 320px); }
+            .header-badge { font-size: 0.6rem; }
+        }
+
+        @media (max-width: 900px) {
+            .app-layout {
+                grid-template-columns: 1fr;
+                min-height: auto;
+            }
+            .main-panel {
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            .side-panel {
+                border-top: 1px solid var(--border);
+                padding-top: 1.25rem;
+            }
+            .risk-dashboard { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 640px) {
+            body::before { background-size: 28px 28px; }
+            .header {
+                align-items: flex-start;
+                padding-block: 1rem;
+            }
+            .logo { max-width: 100%; }
+            .logo-text { font-size: 1rem; }
+            .header-badge { max-width: 100%; }
+            .config-bar { gap: 0.7rem; }
+            .config-label {
+                width: 100%;
+                white-space: normal;
+            }
+            .config-input {
+                min-width: 0;
+                font-size: 0.7rem;
+            }
+            .stat-item { padding-inline: 1rem; }
+            .panel-header,
+            .slider-header,
+            .side-section-title {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.75rem;
+            }
+            .filter-row { width: 100%; }
+            .filter-btn {
+                flex: 1 1 calc(50% - 0.5rem);
+                text-align: center;
+            }
+            .risk-dashboard { grid-template-columns: 1fr; }
+            .history-item {
+                align-items: flex-start;
+                flex-wrap: wrap;
+            }
+            .history-badge { margin-left: auto; }
+            .zoom-img {
+                max-width: 96%;
+                max-height: 88%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header { gap: 0.75rem; }
+            .logo-icon {
+                width: 32px;
+                height: 32px;
+                font-size: 1rem;
+            }
+            .upload-icon-wrap {
+                width: 56px;
+                height: 56px;
+                font-size: 1.45rem;
+            }
+            .upload-title { font-size: 0.95rem; }
+            .upload-sub { font-size: 0.76rem; }
+            .filter-btn { flex-basis: 100%; }
+            .actions-row { flex-direction: column; }
+            .btn { width: 100%; }
+            .labels-grid { grid-template-columns: 1fr; }
+            .meta-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.2rem;
+            }
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-up { animation: fadeUp 0.4s ease-out both; }
+
+        /* ══════════════════════════════════════════════
+           LIVE VIDEO FEED SECTION
+        ══════════════════════════════════════════════ */
+
+        .live-feed-section {
+            position: relative;
+            z-index: 5;
+            width: min(100%, 1680px);
+            margin: 0 auto;
+            padding: var(--panel-pad);
+            border-top: 1px solid var(--border);
+        }
+
+        .lf-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .lf-title-group {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+        }
+
+        .lf-icon {
+            width: 38px; height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #7c3aed, #38bdf8);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .lf-title {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        .lf-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        .lf-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .lf-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-family: var(--mono);
+            font-size: 0.65rem;
+            letter-spacing: 1px;
+            padding: 0.3rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid var(--border-bright);
+            color: var(--primary);
+        }
+
+        .lf-stream-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--success);
+            flex-shrink: 0;
+        }
+
+        .lf-stream-dot.paused { background: var(--text-muted); animation: none; }
+
+        .lf-badge .lf-stream-dot { animation: pulse 2s infinite; }
+
+        /* Watch-list alert banner */
+        .lf-alert {
+            display: none;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.85rem 1.25rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--danger);
+            background: var(--danger-dim);
+            margin-bottom: 1rem;
+            animation: flashBorder 1.5s ease-in-out 3;
+        }
+
+        .lf-alert-icon { font-size: 1.3rem; flex-shrink: 0; }
+
+        .lf-alert-title {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--danger);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        .lf-alert-body { font-size: 0.82rem; color: #fca5a5; margin-top: 0.15rem; }
+
+        /* Frames grid */
+        .lf-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+            gap: 1rem;
+        }
+
+        .lf-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: border-color 0.25s, transform 0.2s;
+            animation: fadeUp 0.35s ease-out both;
+        }
+
+        .lf-card:hover {
+            border-color: var(--border-bright);
+            transform: translateY(-2px);
+        }
+
+        .lf-card.alert-card { border-color: var(--danger); }
+
+        .lf-img-wrap {
+            position: relative;
+            background: rgba(20, 30, 50, 0.4);
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+        }
+
+        .lf-img {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
+            cursor: zoom-in;
+            transition: transform 0.35s;
+        }
+
+        .lf-card:hover .lf-img { transform: scale(1.03); }
+
+        .lf-img-placeholder {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--text-muted);
+            font-size: 2rem;
+        }
+
+        .lf-source-badge {
+            position: absolute;
+            top: 8px; left: 8px;
+            font-family: var(--mono);
+            font-size: 0.55rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(6,10,16,0.85);
+            border: 1px solid var(--border-bright);
+            color: var(--primary);
+        }
+
+        .lf-watch-badge {
+            position: absolute;
+            top: 8px; right: 8px;
+            font-family: var(--mono);
+            font-size: 0.55rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(244,63,94,0.85);
+            color: #fff;
+            animation: pulse 1.5s infinite;
+        }
+
+        .lf-body {
+            padding: 0.85rem 1rem;
+        }
+
+        .lf-label-list {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            line-height: 1.55;
+            margin-bottom: 0.5rem;
+            min-height: 1.2em;
+        }
+
+        .lf-label-list strong { color: var(--text); font-weight: 600; }
+
+        .lf-watch-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.45rem;
+        }
+
+        .lf-watch-pill {
+            font-size: 0.72rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            background: var(--danger-dim);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            font-family: var(--mono);
+        }
+
+        .lf-ts {
+            font-family: var(--mono);
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            margin-top: 0.35rem;
+        }
+
+        /* Empty / loading states */
+        .lf-empty {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .lf-empty-icon { font-size: 2.5rem; opacity: 0.5; }
+
+        /* Responsive tweaks */
+        @media (max-width: 640px) {
+            .lf-grid { grid-template-columns: 1fr; }
+            .lf-header { flex-direction: column; align-items: flex-start; }
+        }
     </style>
 </head>
 <body>
 
-    <!-- Zoom Modal -->
-    <div id="zoomModal" class="zoom-modal">
-        <img id="zoomedImage" class="zoom-content" src="" />
-    </div>
+<!-- Zoom Modal -->
+<div id="zoomModal" class="zoom-modal">
+    <img id="zoomedImage" class="zoom-img" src="" />
+</div>
 
-    <h1>AI Vision</h1>
-    <p class="subtitle">Drag & drop an image to run serverless object detection</p>
-    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 auto 1rem; padding: 0.75rem 1rem; max-width: 1120px; border: 1px solid var(--border-color); border-radius: var(--radius); background: rgba(255,255,255,0.04);">
-        <label for="apiBaseUrlInput" style="font-weight: 600; white-space: nowrap;">API Gateway URL</label>
-        <input id="apiBaseUrlInput" type="url" placeholder="https://<api-id>.execute-api.us-east-1.amazonaws.com/dev" style="flex: 1 1 320px; min-width: 0; padding: 0.65rem 0.85rem; border-radius: 0.5rem; border: 1px solid var(--border-color); background: rgba(15, 23, 42, 0.65); color: var(--text-main);" />
-        <p style="margin: 0; color: var(--text-muted); font-size: 0.875rem;">Saved automatically. Leave blank to use the current origin.</p>
+<!-- Header -->
+<header class="header">
+    <div class="logo">
+        <div class="logo-icon">🔍</div>
+        <span class="logo-text">Reko<span>Vision</span></span>
     </div>
+    <span class="header-badge">INDUSTRIAL AI · AWS SERVERLESS</span>
+</header>
 
-    <!-- Navigation Tabs -->
-    <div style="display: flex; gap: 1rem; margin-bottom: 0.5rem;">
-        <button id="tabUploadBtn" style="padding: 0.5rem 1.5rem; border-radius: 0.5rem; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600;">Upload & Detect</button>
-        <button id="tabHistoryBtn" style="padding: 0.5rem 1.5rem; border-radius: 0.5rem; border: 1px solid var(--border-color); background: var(--surface-color); color: var(--text-main); cursor: pointer; font-weight: 600;">History</button>
+<!-- Live Stats Bar -->
+<div class="stats-bar">
+    <div class="stat-item">
+        <div class="live-dot"></div>
+        <span class="stat-label">Status</span>
+        <span class="stat-value success" id="statStatus">ONLINE</span>
     </div>
+    <div class="stat-item">
+        <span class="stat-label">Total Scans</span>
+        <span class="stat-value" id="statTotal">—</span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label">Violations</span>
+        <span class="stat-value danger" id="statViolations">—</span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label">Avg Latency</span>
+        <span class="stat-value" id="statLatency">—</span>
+    </div>
+    <div class="stat-item">
+        <span class="stat-label">Compliance Rate</span>
+        <span class="stat-value success" id="statCompliance">—</span>
+    </div>
+</div>
 
-    <div class="container" id="mainContainer">
-        <!-- Upload Section -->
-        <div class="glass-panel" id="uploadPanel">
-            <label class="upload-area" id="dropZone" for="fileInput">
-                <span class="upload-icon">📸</span>
-                <h3>Drag and drop your image here</h3>
-                <p style="color: var(--text-muted); margin-top: 0.5rem; font-size: 0.875rem;">Supports JPG, PNG, WEBP (Max 20MB)</p>
-                <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp" />
+<!-- Config Bar -->
+<div class="config-bar">
+    <span class="config-label">API Endpoint</span>
+    <input type="url" id="apiInput" class="config-input" placeholder="https://<api-id>.execute-api.us-east-1.amazonaws.com/dev" />
+</div>
+
+<!-- App Layout -->
+<div class="app-layout">
+
+    <!-- Main Panel -->
+    <div class="main-panel">
+
+        <!-- Upload Zone -->
+        <div id="uploadZone">
+            <label class="upload-zone" id="dropZone" for="fileInput">
+                <div class="upload-icon-wrap">📸</div>
+                <div class="upload-title">Drop image to analyze</div>
+                <div class="upload-sub">JPG · PNG · WEBP · Max 20MB</div>
+                <div class="progress-wrap" id="progressWrap">
+                    <div class="progress-label" id="progressLabel">Uploading...</div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progressFill"></div>
+                    </div>
+                </div>
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" />
             </label>
-
-            <!-- Loading Status -->
-            <div class="status-container" id="loadingStatus">
-                <div class="spinner"></div>
-                <div class="status-text" id="statusMessage">Uploading image directly to S3...</div>
-            </div>
-
-            <!-- Error Banner -->
-            <div id="errorAlert" class="alert"></div>
         </div>
 
-        <!-- Results Section -->
-        <div class="glass-panel results-area" id="resultsPanel">
-            <h3>Detection Results</h3>
-            <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.875rem;">Annotated directly from Rekognition outputs.</p>
-            
-            <img id="annotatedImage" class="image-preview" src="" alt="Annotated result" />
-            <div class="labels-grid" id="labelsContainer"></div>
-            
-            <button id="resetBtn" style="margin-top: 2rem; padding: 0.75rem 1.5rem; border-radius: 0.5rem; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 600; transition: background 0.2s;">Analyze Another Image</button>
+        <!-- Loading -->
+        <div class="loading-state" id="loadingState">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loadingText">ANALYZING WITH AI...</div>
         </div>
 
-        <!-- History Section -->
-        <div class="glass-panel" id="historyPanel" style="display: none;">
-            <h2 style="margin-bottom: 1rem;">Compliance History</h2>
-            <div id="historyLoading" class="status-container" style="display: flex;">
-                <div class="spinner"></div>
-                <div class="status-text">Fetching history...</div>
+        <!-- Error -->
+        <div class="error-box" id="errorBox"></div>
+
+        <!-- Violation / Compliant Banner -->
+        <div class="violation-banner" id="violationBanner">
+            <div class="violation-icon">⚠️</div>
+            <div>
+                <div class="violation-title">⚡ PPE VIOLATION DETECTED</div>
+                <div class="violation-msg" id="violationMsg"></div>
             </div>
-            <div id="historyList" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+        </div>
+
+        <div class="compliant-banner" id="compliantBanner">
+            <div class="violation-icon">✅</div>
+            <div>
+                <div class="compliant-title">ALL CLEAR — PPE COMPLIANT</div>
+                <div class="compliant-msg" id="compliantMsg"></div>
+            </div>
+        </div>
+
+        <!-- Risk Dashboard -->
+        <div class="risk-dashboard" id="riskDashboard">
+            <div class="risk-card">
+                <div class="risk-card-label">Risk Level</div>
+                <div id="riskLevelBadge"></div>
+            </div>
+            <div class="risk-card">
+                <div class="risk-card-label">Workers Detected</div>
+                <div class="risk-card-value blue" id="workersCount">0</div>
+            </div>
+            <div class="risk-card">
+                <div class="risk-card-label">PPE Compliance</div>
+                <div class="risk-card-value" id="complianceRate">N/A</div>
+            </div>
+        </div>
+
+        <!-- Annotated Image -->
+        <div class="result-image-wrap" id="resultImageWrap">
+            <img id="annotatedImage" class="result-image" src="" alt="Annotated result" />
+            <span class="image-tag">REKOGNITION OUTPUT</span>
+        </div>
+
+        <!-- Confidence Slider -->
+        <div class="slider-section" id="sliderSection">
+            <div class="slider-header">
+                <span class="slider-label">Min Confidence Threshold</span>
+                <span class="slider-value" id="sliderVal">50%</span>
+            </div>
+            <input type="range" id="confSlider" min="0" max="99" value="50" />
+        </div>
+
+        <!-- Label Filters + Grid -->
+        <div class="labels-section" id="labelsSection">
+            <div class="panel-header">
+                <span class="panel-title">Detected Labels</span>
+                <div class="filter-row" id="filterRow">
+                    <button class="filter-btn active" data-filter="all">ALL</button>
+                    <button class="filter-btn" data-filter="high">HIGH &gt;90%</button>
+                    <button class="filter-btn" data-filter="medium">MED 70–90%</button>
+                    <button class="filter-btn" data-filter="low">LOW &lt;70%</button>
+                </div>
+            </div>
+            <div class="labels-grid" id="labelsGrid"></div>
+
+            <div class="extra-section" id="textSection"></div>
+            <div class="extra-section" id="moderationSection"></div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions-row" id="actionsRow" style="display:none;">
+            <button class="btn btn-primary" id="exportBtn">⬇ Export Report</button>
+            <button class="btn btn-outline" id="resetBtn">↩ Analyze Another</button>
+        </div>
+
+        <!-- Image Key -->
+        <div class="imagekey-box" id="imagekeyBox" title="Click to copy"></div>
+
+    </div>
+
+    <!-- Side Panel -->
+    <div class="side-panel">
+
+        <!-- Processing Meta -->
+        <div class="side-section" id="metaSection" style="display:none;">
+            <div class="side-section-title">Processing Info</div>
+            <div class="meta-row">
+                <span class="meta-key">Processing Time</span>
+                <span class="meta-val" id="metaTime">—</span>
+            </div>
+            <div class="meta-row">
+                <span class="meta-key">Labels Found</span>
+                <span class="meta-val" id="metaLabels">—</span>
+            </div>
+            <div class="meta-row">
+                <span class="meta-key">Moderation Flags</span>
+                <span class="meta-val" id="metaMod">—</span>
+            </div>
+            <div class="meta-row">
+                <span class="meta-key">Text Detections</span>
+                <span class="meta-val" id="metaText">—</span>
+            </div>
+            <div class="meta-row">
+                <span class="meta-key">PPE Status</span>
+                <span class="meta-val" id="metaPPE">—</span>
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="side-section">
+            <div class="side-section-title">
+                <span>Recent Scans</span>
+                <button class="btn btn-outline" id="refreshHistoryBtn" style="padding: 0.2rem 0.6rem; font-size: 0.7rem;">↻</button>
+            </div>
+            <div id="historyList">
+                <div style="color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 1.5rem 0;">
+                    No scans yet
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     LIVE VIDEO FEED
+     Polls GET /enrichedframe every 3 s and renders recent frames.
+═══════════════════════════════════════════════════════════════ -->
+<div class="live-feed-section" id="liveFeedSection">
+
+    <!-- Header -->
+    <div class="lf-header">
+        <div class="lf-title-group">
+            <div class="lf-icon">🎥</div>
+            <div>
+                <div class="lf-title">Live Video Feed</div>
+                <div class="lf-subtitle">Real-time Kinesis → Rekognition stream analysis</div>
+            </div>
+        </div>
+        <div class="lf-controls">
+            <span class="lf-badge" id="lfStreamBadge">
+                <span class="lf-stream-dot" id="lfDot"></span>
+                <span id="lfStatus">CONNECTING</span>
+            </span>
+            <span class="lf-badge" id="lfFrameCount">0 FRAMES</span>
+            <button class="btn btn-outline" id="lfToggleBtn"
+                style="padding: 0.3rem 0.85rem; font-size: 0.75rem; min-height: 0;">
+                ⏸ Pause
+            </button>
         </div>
     </div>
 
-    <script>
-        const API_BASE_URL = localStorage.getItem("apiBaseUrl") || "";
+    <!-- Watch-list alert banner -->
+    <div class="lf-alert" id="lfAlert">
+        <div class="lf-alert-icon">🚨</div>
+        <div>
+            <div class="lf-alert-title">⚡ Watch-list objects detected in live stream</div>
+            <div class="lf-alert-body" id="lfAlertBody"></div>
+        </div>
+    </div>
 
-        const UPLOAD_MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+    <!-- Frames grid -->
+    <div class="lf-grid" id="lfGrid">
+        <div class="lf-empty">
+            <div class="lf-empty-icon">📡</div>
+            <div>Waiting for live frames&hellip;</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Start the video capture client, then paste your API URL above.</div>
+        </div>
+    </div>
 
-        // DOM Elements
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const uploadPanel = document.getElementById('uploadPanel');
-        const loadingStatus = document.getElementById('loadingStatus');
-        const statusMessage = document.getElementById('statusMessage');
-        const errorAlert = document.getElementById('errorAlert');
-        const apiBaseUrlInput = document.getElementById('apiBaseUrlInput');
-        
-        const resultsPanel = document.getElementById('resultsPanel');
-        const annotatedImage = document.getElementById('annotatedImage');
-        const labelsContainer = document.getElementById('labelsContainer');
-        const resetBtn = document.getElementById('resetBtn');
-        const zoomModal = document.getElementById('zoomModal');
-        const zoomedImage = document.getElementById('zoomedImage');
+</div>
 
-        // Tabs
-        const tabUploadBtn = document.getElementById('tabUploadBtn');
-        const tabHistoryBtn = document.getElementById('tabHistoryBtn');
-        const historyPanel = document.getElementById('historyPanel');
-        const historyLoading = document.getElementById('historyLoading');
-        const historyList = document.getElementById('historyList');
+<script>
+    // ── State ─────────────────────────────────────────────────────────────
+    let pollingInterval = null;
+    let allLabels = [];
+    let currentData = null;
+    let sessionStats = { total: 0, violations: 0, latencies: [], compliant: 0 };
 
-        apiBaseUrlInput.value = API_BASE_URL;
+    // ── DOM ───────────────────────────────────────────────────────────────
+    const apiInput        = document.getElementById('apiInput');
+    const dropZone        = document.getElementById('dropZone');
+    const fileInput       = document.getElementById('fileInput');
+    const uploadZone      = document.getElementById('uploadZone');
+    const loadingState    = document.getElementById('loadingState');
+    const loadingText     = document.getElementById('loadingText');
+    const errorBox        = document.getElementById('errorBox');
+    const progressWrap    = document.getElementById('progressWrap');
+    const progressFill    = document.getElementById('progressFill');
+    const progressLabel   = document.getElementById('progressLabel');
 
-        function normalizeApiBaseUrl(value) {
-            return value.trim().replace(/\/+$/, '');
+    const violationBanner = document.getElementById('violationBanner');
+    const violationMsg    = document.getElementById('violationMsg');
+    const compliantBanner = document.getElementById('compliantBanner');
+    const compliantMsg    = document.getElementById('compliantMsg');
+
+    const riskDashboard   = document.getElementById('riskDashboard');
+    const riskLevelBadge  = document.getElementById('riskLevelBadge');
+    const workersCount    = document.getElementById('workersCount');
+    const complianceRate  = document.getElementById('complianceRate');
+
+    const resultImageWrap = document.getElementById('resultImageWrap');
+    const annotatedImage  = document.getElementById('annotatedImage');
+    const sliderSection   = document.getElementById('sliderSection');
+    const confSlider      = document.getElementById('confSlider');
+    const sliderVal       = document.getElementById('sliderVal');
+    const labelsSection   = document.getElementById('labelsSection');
+    const labelsGrid      = document.getElementById('labelsGrid');
+    const textSection     = document.getElementById('textSection');
+    const moderationSection = document.getElementById('moderationSection');
+    const actionsRow      = document.getElementById('actionsRow');
+    const imagekeyBox     = document.getElementById('imagekeyBox');
+    const metaSection     = document.getElementById('metaSection');
+    const historyList     = document.getElementById('historyList');
+
+    const zoomModal       = document.getElementById('zoomModal');
+    const zoomedImage     = document.getElementById('zoomedImage');
+    const exportBtn       = document.getElementById('exportBtn');
+    const resetBtn        = document.getElementById('resetBtn');
+    const refreshHistoryBtn = document.getElementById('refreshHistoryBtn');
+
+    // Stats bar
+    const statTotal      = document.getElementById('statTotal');
+    const statViolations = document.getElementById('statViolations');
+    const statLatency    = document.getElementById('statLatency');
+    const statCompliance = document.getElementById('statCompliance');
+
+    // ── API URL ───────────────────────────────────────────────────────────
+    apiInput.value = localStorage.getItem('rvApiUrl') || '';
+
+    apiInput.addEventListener('input', () => {
+        const v = apiInput.value.trim().replace(/\/+$/, '');
+        if (v) localStorage.setItem('rvApiUrl', v);
+        else localStorage.removeItem('rvApiUrl');
+    });
+
+    function getBase() {
+        return (apiInput.value || localStorage.getItem('rvApiUrl') || '').trim().replace(/\/+$/, '');
+    }
+
+    function api(path) {
+        const base = getBase();
+        if (!base) { showError('Paste your API Gateway URL in the config bar above.'); return null; }
+        return `${base}${path}`;
+    }
+
+    // ── Upload ────────────────────────────────────────────────────────────
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    async function handleFile(file) {
+        hideError();
+        if (!file.type.startsWith('image/')) return showError('Please upload a JPG, PNG, or WEBP image.');
+        if (file.size > 20 * 1024 * 1024) return showError('File too large — max 20MB.');
+
+        const presignUrl = api('/presign');
+        if (!presignUrl) return;
+
+        try {
+            setLoading(true, 'REQUESTING SECURE UPLOAD URL...');
+            uploadZone.style.display = 'none';
+
+            // Get presigned URL
+            const params = new URLSearchParams({ filename: file.name, contentType: file.type });
+            const presignRes = await fetch(`${presignUrl}?${params}`);
+            if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.statusText}`);
+            const presignData = await presignRes.json();
+
+            // Upload with progress
+            setLoading(true, 'UPLOADING TO S3...');
+            await uploadWithProgress(presignData.uploadUrl, file);
+
+            // Poll
+            setLoading(true, 'RUNNING AI ANALYSIS...');
+            startPolling(presignData.imageKey);
+
+        } catch (err) {
+            setLoading(false);
+            uploadZone.style.display = 'block';
+            showError(err.message);
         }
+    }
 
-        function getApiBaseUrl() {
-            return normalizeApiBaseUrl(apiBaseUrlInput.value || localStorage.getItem("apiBaseUrl") || API_BASE_URL);
-        }
-
-        function buildApiUrl(path) {
-            const baseUrl = getApiBaseUrl();
-            return baseUrl ? `${baseUrl}${path}` : path;
-        }
-
-        apiBaseUrlInput.addEventListener('input', (event) => {
-            const nextValue = event.target.value.trim();
-
-            if (nextValue) {
-                localStorage.setItem('apiBaseUrl', nextValue);
-            } else {
-                localStorage.removeItem('apiBaseUrl');
-            }
-        });
-
-        tabUploadBtn.addEventListener('click', () => {
-            tabUploadBtn.style.background = 'var(--primary)';
-            tabUploadBtn.style.color = 'white';
-            tabUploadBtn.style.border = 'none';
-
-            tabHistoryBtn.style.background = 'var(--surface-color)';
-            tabHistoryBtn.style.color = 'var(--text-main)';
-            tabHistoryBtn.style.border = '1px solid var(--border-color)';
-
-            historyPanel.style.display = 'none';
-            uploadPanel.style.display = 'block';
-            // Show results only if we had an annotated image completed
-            if (annotatedImage.src && !annotatedImage.src.endsWith(location.href)) {
-                resultsPanel.style.display = 'block';
-            }
-        });
-
-        tabHistoryBtn.addEventListener('click', () => {
-            tabHistoryBtn.style.background = 'var(--primary)';
-            tabHistoryBtn.style.color = 'white';
-            tabHistoryBtn.style.border = 'none';
-
-            tabUploadBtn.style.background = 'var(--surface-color)';
-            tabUploadBtn.style.color = 'var(--text-main)';
-            tabUploadBtn.style.border = '1px solid var(--border-color)';
-
-            uploadPanel.style.display = 'none';
-            resultsPanel.style.display = 'none';
-            historyPanel.style.display = 'block';
-
-            fetchHistory();
-        });
-
-        async function fetchHistory() {
-            historyLoading.style.display = 'flex';
-            historyList.innerHTML = '';
-            
-            try {
-                const response = await fetch(buildApiUrl('/history'));
-                const data = await response.json();
-                historyLoading.style.display = 'none';
-
-                if (data.history && data.history.length > 0) {
-                    data.history.forEach(item => {
-                        const div = document.createElement('div');
-                        div.style.background = 'rgba(255,255,255,0.05)';
-                        div.style.border = '1px solid var(--border-color)';
-                        div.style.borderRadius = '0.5rem';
-                        div.style.padding = '1rem';
-                        
-                        const date = new Date(item.timestamp * 1000).toLocaleString();
-                        const color = item.compliance_status === 'PASS' ? 'var(--success)' : item.compliance_status === 'FAIL' ? 'var(--error)' : 'var(--text-muted)';
-                        const status = `<span style="color: ${color}; font-weight: bold;">${item.compliance_status}</span>`;
-                        
-                        div.innerHTML = `
-                            <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.5rem;">${date}</p>
-                            <p style="margin-bottom: 0.5rem;">Status: ${status}</p>
-                            <p style="font-size: 0.9rem; line-height: 1.4; color: var(--text-main);">${item.ai_safety_report || "No AI Report Available"}</p>
-                        `;
-                        historyList.appendChild(div);
-                    });
-                } else {
-                    historyList.innerHTML = '<p style="color: var(--text-muted);">No history available.</p>';
+    function uploadWithProgress(url, file) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            progressWrap.style.display = 'block';
+            xhr.upload.onprogress = e => {
+                if (e.lengthComputable) {
+                    const pct = Math.round((e.loaded / e.total) * 100);
+                    progressFill.style.width = `${pct}%`;
+                    progressLabel.textContent = `Uploading... ${pct}%`;
                 }
-            } catch (error) {
-                historyLoading.style.display = 'none';
-                historyList.innerHTML = `<p style="color: var(--error);">Error loading history: ${error.message}</p>`;
+            };
+            xhr.onload = () => {
+                progressWrap.style.display = 'none';
+                xhr.status < 400 ? resolve() : reject(new Error(`S3 upload failed: ${xhr.statusText}`));
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload'));
+            xhr.open('PUT', url);
+            xhr.setRequestHeader('Content-Type', file.type);
+            xhr.send(file);
+        });
+    }
+
+    // ── Polling ───────────────────────────────────────────────────────────
+    function startPolling(imageKey) {
+        if (pollingInterval) clearTimeout(pollingInterval);
+        const startTime = Date.now();
+        let delay = 2000;
+
+        const poll = async () => {
+            if (Date.now() - startTime > 90000) {
+                setLoading(false);
+                uploadZone.style.display = 'block';
+                showError('Detection timed out. Try again.');
+                return;
             }
-        }
 
-        let pollingInterval = null;
-
-        // ── Event Listeners ───────────────────────────────────────────────
-
-        // Zoom Listeners
-        annotatedImage.addEventListener('click', () => {
-            if (annotatedImage.src) {
-                zoomedImage.src = annotatedImage.src;
-                zoomModal.style.display = 'flex';
-            }
-        });
-        
-        zoomModal.addEventListener('click', () => {
-            zoomModal.style.display = 'none';
-        });
-
-        // Click to upload
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length) handleFile(e.target.files[0]);
-        });
-
-        // Drag & Drop
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('drag-over');
-        });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-        });
-
-        // Reset
-        resetBtn.addEventListener('click', () => {
-            resultsPanel.style.display = 'none';
-            dropZone.style.display = 'block';
-            fileInput.value = '';
-            hideError();
-        });
-
-        // ── Main Pipeline ─────────────────────────────────────────────────
-
-        async function handleFile(file) {
-            hideError();
-
-            if (!file.type.startsWith('image/')) {
-                return showError("Please upload an image file (JPG, PNG, WEBP).");
-            }
-            if (file.size > UPLOAD_MAX_BYTES) {
-                return showError("File is too large. Max size is 20MB.");
-            }
             try {
-                // 1. Enter Loading State
-                dropZone.style.display = 'none';
-                loadingStatus.style.display = 'flex';
-                
-                // 2. Get Presigned URL
-                statusMessage.textContent = "Requesting secure upload URL...";
-                const presignParams = new URLSearchParams({
-                    filename: file.name,
-                    contentType: file.type
-                });
-                
-                const presignUrl = `${buildApiUrl('/presign')}?${presignParams}`;
-                const presignRes = await fetch(presignUrl);
-                
-                if (!presignRes.ok) throw new Error(`Presign failed: ${presignRes.statusText}`);
-                const presignData = await presignRes.json();
+                const url = api(`/results/${encodeURIComponent(imageKey)}`);
+                if (!url) return;
+                const res = await fetch(url);
 
-                // 3. Upload File Directly to S3
-                statusMessage.textContent = "Uploading image directly to S3...";
-                const uploadRes = await fetch(presignData.uploadUrl, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': file.type },
-                    body: file // Uploading raw binary
-                });
-
-                if (!uploadRes.ok) throw new Error(`S3 Upload failed: ${uploadRes.statusText}`);
-
-                // 4. Poll for Results
-                statusMessage.textContent = "Detecting objects & annotating... (This takes a few seconds)";
-                startPolling(presignData.imageKey);
-
-            } catch (err) {
-                console.error(err);
-                loadingStatus.style.display = 'none';
-                dropZone.style.display = 'block';
-                showError(err.message);
-            }
-        }
-
-        // ── Polling ───────────────────────────────────────────────────────
-
-        function startPolling(imageKey) {
-            if (pollingInterval) clearTimeout(pollingInterval);
-            
-            const startStr = Date.now();
-            const POLL_TIMEOUT_MS = 60000; // 1 minute max wait
-            let currentDelay = 2000; // start with 2s
-            
-            const poll = async () => {
-                if (Date.now() - startStr > POLL_TIMEOUT_MS) {
-                    loadingStatus.style.display = 'none';
-                    dropZone.style.display = 'block';
-                    showError("Detection timed out after 60 seconds.");
+                if (res.status === 404) {
+                    delay = Math.min(delay + 1000, 8000);
+                    pollingInterval = setTimeout(poll, delay);
                     return;
                 }
 
-                try {
-                    // Requires GET /results/{imageKey} endpoint in API Gateway
-                    const encodedKey = encodeURIComponent(imageKey);
-                    const res = await fetch(buildApiUrl(`/results/${encodedKey}`));
-                    
-                    if (res.status === 404) {
-                        // Not ready yet — gradually increase backoff interval
-                        if (currentDelay < 5000) currentDelay = 5000;
-                        else if (currentDelay < 10000) currentDelay = 10000;
-                        
-                        pollingInterval = setTimeout(poll, currentDelay);
-                        return;
-                    }
-                    if (!res.ok) throw new Error(`Status API error: ${res.statusText}`);
-                    
-                    const data = await res.json();
-                    const normalizedStatus = String(data.status || '').toLowerCase();
-                    
-                    if (normalizedStatus === 'failed') {
-                        loadingStatus.style.display = 'none';
-                        dropZone.style.display = 'block';
-                        showError("Lambda detection failed: " + (data.errorMessage || "Unknown error"));
-                        return;
-                    }
+                if (!res.ok) throw new Error(`Results API: ${res.statusText}`);
+                const data = await res.json();
+                const status = String(data.status || '').toUpperCase();
 
-                    if (normalizedStatus === 'complete' && data.annotatedUrl) {
-                        loadingStatus.style.display = 'none';
-                        displayResults(data);
-                        return; // done!
-                    }
-                    
-                    // Fallback to poll again if status doesn't match above
-                    pollingInterval = setTimeout(poll, currentDelay);
-                } catch (err) {
-                    console.error("Polling error", err);
-                    pollingInterval = setTimeout(poll, currentDelay);
+                if (status === 'FAILED') {
+                    setLoading(false);
+                    uploadZone.style.display = 'block';
+                    showError('Detection failed on the server.');
+                    return;
                 }
-            };
-            
-            pollingInterval = setTimeout(poll, currentDelay);
+
+                if (status === 'COMPLETE' && data.annotatedUrl) {
+                    setLoading(false);
+                    displayResults(data);
+                    return;
+                }
+
+                pollingInterval = setTimeout(poll, delay);
+            } catch (err) {
+                console.error('Poll error:', err);
+                pollingInterval = setTimeout(poll, delay);
+            }
+        };
+
+        pollingInterval = setTimeout(poll, delay);
+    }
+
+    // ── Display Results ───────────────────────────────────────────────────
+    function displayResults(data) {
+        currentData = data;
+        allLabels = Array.isArray(data.labels) ? data.labels : [];
+
+        const ppeStatus       = data.ppe_compliance_status || 'N/A';
+        const personsDetected = (() => {
+            const p = data.ppe || data.ppe_raw || {};
+            return Array.isArray(p.Persons) ? p.Persons.length : 0;
+        })();
+        const personsWithout  = Number(data.persons_without_ppe || 0);
+        const processingMs    = data.processing_time_ms || 0;
+
+        // Update session stats
+        sessionStats.total++;
+        sessionStats.latencies.push(processingMs);
+        if (ppeStatus === 'NON_COMPLIANT') sessionStats.violations++;
+        else if (ppeStatus === 'COMPLIANT') sessionStats.compliant++;
+        updateStatsBar();
+
+        // Violation / Compliant banner
+        violationBanner.style.display = 'none';
+        compliantBanner.style.display = 'none';
+
+        if (ppeStatus === 'NON_COMPLIANT') {
+            const msg = `${personsWithout} worker${personsWithout !== 1 ? 's' : ''} missing required safety gear — supervisor alert sent via SNS.`;
+            violationMsg.textContent = msg;
+            violationBanner.style.display = 'flex';
+        } else if (ppeStatus === 'COMPLIANT') {
+            compliantMsg.textContent = `All ${personsDetected} detected worker${personsDetected !== 1 ? 's' : ''} wearing required PPE.`;
+            compliantBanner.style.display = 'flex';
         }
 
-        // ── Render ────────────────────────────────────────────────────────
+        // Risk Dashboard
+        const riskLevel = ppeStatus === 'NON_COMPLIANT' ? 'HIGH'
+                        : ppeStatus === 'COMPLIANT'     ? 'LOW'
+                        : personsDetected > 0           ? 'MEDIUM' : 'LOW';
 
-        function displayResults(data) {
-            // Setup Image
-            // We append a timestamp to bypass browser caching of the S3 URL
-            const joinChar = data.annotatedUrl.includes('?') ? '&' : '?';
-            annotatedImage.src = `${data.annotatedUrl}${joinChar}t=${Date.now()}`;
-            
-            // Render Labels
-            labelsContainer.innerHTML = '';
-            const labels = Array.isArray(data.labels) ? data.labels : [];
-            const textDetections = Array.isArray(data.text_detections)
-                ? [...new Set(data.text_detections.map(item => item?.DetectedText).filter(Boolean))]
-                : [];
-            const moderationLabels = Array.isArray(data.moderation_labels)
-                ? data.moderation_labels
-                    .map(item => item?.Name ? `${item.Name}${typeof item.Confidence === 'number' ? ` (${item.Confidence.toFixed(1)}%)` : ''}` : '')
-                    .filter(Boolean)
-                : [];
-            const ppeComplianceStatus = data.ppe_compliance_status;
-            const ppePayload = data.ppe || data.ppe_raw || {};
-            const personsDetected = Array.isArray(ppePayload.Persons) ? ppePayload.Persons.length : 0;
-            const personsWithoutPpe = Number(data.persons_without_ppe || 0);
+        const riskClass = riskLevel === 'HIGH' ? 'high' : riskLevel === 'MEDIUM' ? 'medium' : 'low';
+        riskLevelBadge.innerHTML = `<span class="risk-level-badge ${riskClass}">● ${riskLevel}</span>`;
+        workersCount.textContent = personsDetected;
 
-            const appendResultSection = (title, items) => {
-                if (items.length === 0) return;
+        if (ppeStatus === 'N/A' || personsDetected === 0) {
+            complianceRate.textContent = 'N/A';
+            complianceRate.className = 'risk-card-value blue';
+        } else {
+            const rate = Math.round(((personsDetected - personsWithout) / personsDetected) * 100);
+            complianceRate.textContent = `${rate}%`;
+            complianceRate.className = `risk-card-value ${rate === 100 ? 'green' : rate >= 50 ? 'yellow' : 'red'}`;
+        }
 
-                const section = document.createElement('div');
-                section.style.gridColumn = '1/-1';
-                section.style.marginTop = '1rem';
+        riskDashboard.style.display = 'grid';
 
-                const heading = document.createElement('h4');
-                heading.textContent = title;
-                heading.style.margin = '0 0 0.75rem 0';
-                heading.style.fontSize = '0.95rem';
+        // Annotated image
+        const joinChar = data.annotatedUrl.includes('?') ? '&' : '?';
+        annotatedImage.src = `${data.annotatedUrl}${joinChar}t=${Date.now()}`;
+        resultImageWrap.style.display = 'block';
 
-                const list = document.createElement('div');
-                list.style.display = 'flex';
-                list.style.flexWrap = 'wrap';
-                list.style.gap = '0.5rem';
+        // Slider
+        sliderSection.style.display = 'block';
+        renderLabels(50);
 
-                items.forEach(item => {
-                    const chip = document.createElement('span');
-                    chip.textContent = item;
-                    chip.style.padding = '0.45rem 0.75rem';
-                    chip.style.borderRadius = '999px';
-                    chip.style.border = '1px solid var(--border-color)';
-                    chip.style.background = 'rgba(255,255,255,0.05)';
-                    chip.style.fontSize = '0.9rem';
-                    list.appendChild(chip);
-                });
+        // Meta
+        metaSection.style.display = 'block';
+        document.getElementById('metaTime').textContent = `${processingMs}ms`;
+        document.getElementById('metaLabels').textContent = allLabels.length;
+        document.getElementById('metaMod').textContent = Array.isArray(data.moderation_labels) ? data.moderation_labels.length : 0;
+        document.getElementById('metaText').textContent = Array.isArray(data.text_detections) ? data.text_detections.length : 0;
+        document.getElementById('metaPPE').textContent = ppeStatus;
 
-                section.appendChild(heading);
-                section.appendChild(list);
-                labelsContainer.appendChild(section);
-            };
-            
-            if (labels.length === 0) {
-                labelsContainer.innerHTML = '<p style="grid-column: 1/-1; color: var(--text-muted);">No objects detected.</p>';
-            } else {
-                labels.forEach(lbl => {
-                    const el = document.createElement('div');
-                    el.className = 'label-chip';
-                    // We map the confidence strictly to CSS var for the background pill
-                    el.style.setProperty('--confidence', `${lbl.Confidence}%`);
-                    
-                    el.innerHTML = `
-                        <span class="label-name">${lbl.Name}</span>
-                        <span class="label-confidence">${lbl.Confidence.toFixed(1)}%</span>
-                    `;
-                    labelsContainer.appendChild(el);
-                });
+        // Image key
+        if (data.imageKey) {
+            imagekeyBox.textContent = `🔑 ${data.imageKey}  (click to copy)`;
+            imagekeyBox.style.display = 'block';
+        }
+
+        actionsRow.style.display = 'flex';
+
+        // Render text & moderation
+        renderExtras(data);
+
+        // Load history
+        fetchHistory();
+    }
+
+    // ── Label Rendering ───────────────────────────────────────────────────
+    function renderLabels(minConf) {
+        labelsGrid.innerHTML = '';
+        labelsSection.style.display = 'block';
+
+        const filtered = allLabels.filter(l => l.Confidence >= minConf);
+
+        if (filtered.length === 0) {
+            labelsGrid.innerHTML = `<p style="color:var(--text-muted);font-size:0.85rem;">No labels above ${minConf}% confidence.</p>`;
+            return;
+        }
+
+        filtered.forEach(lbl => {
+            const chip = document.createElement('div');
+            chip.className = 'label-chip';
+            chip.style.setProperty('--conf', `${lbl.Confidence}%`);
+            chip.dataset.confidence = lbl.Confidence;
+            chip.innerHTML = `<span class="label-name">${lbl.Name}</span><span class="label-conf">${lbl.Confidence.toFixed(1)}%</span>`;
+            labelsGrid.appendChild(chip);
+        });
+
+        applyActiveFilter();
+    }
+
+    function applyActiveFilter() {
+        const activeBtn = document.querySelector('.filter-btn.active');
+        const filter = activeBtn ? activeBtn.dataset.filter : 'all';
+        document.querySelectorAll('.label-chip').forEach(chip => {
+            const conf = parseFloat(chip.dataset.confidence);
+            let show = true;
+            if (filter === 'high') show = conf >= 90;
+            else if (filter === 'medium') show = conf >= 70 && conf < 90;
+            else if (filter === 'low') show = conf < 70;
+            chip.classList.toggle('hidden', !show);
+        });
+    }
+
+    // Slider
+    confSlider.addEventListener('input', () => {
+        const val = parseInt(confSlider.value);
+        sliderVal.textContent = `${val}%`;
+        renderLabels(val);
+    });
+
+    // Filter buttons
+    document.getElementById('filterRow').addEventListener('click', e => {
+        if (!e.target.classList.contains('filter-btn')) return;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        applyActiveFilter();
+    });
+
+    function renderExtras(data) {
+        // Text detections
+        const texts = Array.isArray(data.text_detections)
+            ? [...new Set(data.text_detections.map(t => t?.DetectedText).filter(Boolean))]
+            : [];
+        textSection.innerHTML = '';
+        if (texts.length > 0) {
+            textSection.innerHTML = `<div class="extra-title">Detected Text</div><div class="pill-list">${texts.map(t => `<span class="pill">${t}</span>`).join('')}</div>`;
+        }
+
+        // Moderation
+        const mods = Array.isArray(data.moderation_labels) ? data.moderation_labels : [];
+        moderationSection.innerHTML = '';
+        if (mods.length > 0) {
+            moderationSection.innerHTML = `<div class="extra-title">⚠ Moderation Flags</div><div class="pill-list">${mods.map(m => `<span class="pill mod">${m.Name || m} ${m.Confidence ? `(${parseFloat(m.Confidence).toFixed(1)}%)` : ''}</span>`).join('')}</div>`;
+        }
+    }
+
+    // ── History ───────────────────────────────────────────────────────────
+    async function fetchHistory() {
+        const url = api('/history');
+        if (!url) return;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            const items = Array.isArray(data.history) ? data.history : (Array.isArray(data.items) ? data.items : []);
+
+            if (items.length === 0) {
+                historyList.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:1.5rem 0;">No scans yet</div>';
+                return;
             }
 
-            appendResultSection('Detected Text', textDetections);
-            appendResultSection('Moderation Labels', moderationLabels);
-            
-            // Render PPE Status if available
-            if (ppeComplianceStatus && ppeComplianceStatus !== 'N/A') {
-                const ppeEl = document.createElement('div');
-                ppeEl.style.gridColumn = '1/-1';
-                ppeEl.style.marginTop = '1rem';
-                ppeEl.style.padding = '1rem';
-                ppeEl.style.borderRadius = 'var(--radius)';
-                ppeEl.style.fontWeight = '500';
-                
-                if (ppeComplianceStatus === 'NON_COMPLIANT') {
-                    ppeEl.style.backgroundColor = '#fef2f2';
-                    ppeEl.style.color = '#991b1b';
-                    ppeEl.style.border = '1px solid #f87171';
-                    const detectedCopy = personsDetected > 0 ? ` out of ${personsDetected} detected worker${personsDetected === 1 ? '' : 's'}` : '';
-                    ppeEl.innerHTML = `PPE WARNING: ${personsWithoutPpe} worker${personsWithoutPpe === 1 ? '' : 's'} missing required safety gear${detectedCopy}.`;
-                } else if (ppeComplianceStatus === 'COMPLIANT') {
-                    ppeEl.style.backgroundColor = '#f0fdf4';
-                    ppeEl.style.color = '#166534';
-                    ppeEl.style.border = '1px solid #4ade80';
-                    ppeEl.innerHTML = personsDetected > 0
-                        ? `All ${personsDetected} detected worker${personsDetected === 1 ? '' : 's'} are compliant.`
-                        : 'PPE check passed.';
-                }
-                
-                labelsContainer.appendChild(ppeEl);
-            }
+            // Update live stats from history
+            const total = items.length;
+            const violations = items.filter(i => i.ppe_compliance_status === 'NON_COMPLIANT').length;
+            const compliant  = items.filter(i => i.ppe_compliance_status === 'COMPLIANT').length;
+            statTotal.textContent = total;
+            statViolations.textContent = violations;
+            statCompliance.textContent = compliant + total > 0 ? `${Math.round((compliant / total) * 100)}%` : '—';
 
-            resultsPanel.style.display = 'block';
+            historyList.innerHTML = items.slice(0, 10).map(item => {
+                const date = item.timestamp ? new Date(Number(item.timestamp) * 1000).toLocaleString() : '—';
+                const ppe = item.ppe_compliance_status || 'N/A';
+                const badgeClass = ppe === 'COMPLIANT' ? 'pass' : ppe === 'NON_COMPLIANT' ? 'fail' : 'na';
+                const badgeText = ppe === 'COMPLIANT' ? 'PASS' : ppe === 'NON_COMPLIANT' ? 'FAIL' : 'N/A';
+                const topLabels = Array.isArray(item.top_labels) ? item.top_labels.map(l => l.name || l.Name || l).join(', ') : (item.label_count ? `${item.label_count} labels` : '');
+                const thumb = item.annotatedKey ? `<img class="history-thumb" src="" data-key="${item.annotatedKey}" />` : `<div class="history-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:1.2rem;">🖼</div>`;
+
+                return `<div class="history-item">
+                    ${thumb}
+                    <div class="history-info">
+                        <div class="history-labels">${topLabels || 'No labels'}</div>
+                        <div class="history-time">${date}</div>
+                    </div>
+                    <span class="history-badge ${badgeClass}">${badgeText}</span>
+                </div>`;
+            }).join('');
+
+        } catch (err) {
+            historyList.innerHTML = `<div style="color:var(--danger);font-size:0.8rem;">${err.message}</div>`;
+        }
+    }
+
+    refreshHistoryBtn.addEventListener('click', fetchHistory);
+
+    // ── Stats Bar ─────────────────────────────────────────────────────────
+    function updateStatsBar() {
+        statTotal.textContent = sessionStats.total;
+        statViolations.textContent = sessionStats.violations;
+        if (sessionStats.latencies.length > 0) {
+            const avg = Math.round(sessionStats.latencies.reduce((a,b) => a+b, 0) / sessionStats.latencies.length);
+            statLatency.textContent = `${avg}ms`;
+        }
+        const total = sessionStats.total;
+        if (total > 0) {
+            statCompliance.textContent = `${Math.round((sessionStats.compliant / total) * 100)}%`;
+        }
+    }
+
+    // ── Export Report ─────────────────────────────────────────────────────
+    exportBtn.addEventListener('click', () => {
+        if (!currentData) return;
+        const report = {
+            exportedAt: new Date().toISOString(),
+            imageKey: currentData.imageKey,
+            processingTimeMs: currentData.processing_time_ms,
+            ppeStatus: currentData.ppe_compliance_status,
+            personsDetected: currentData.persons_without_ppe !== undefined ? '(see ppe field)' : 'N/A',
+            labels: (currentData.labels || []).map(l => ({ name: l.Name, confidence: l.Confidence })),
+            textDetections: (currentData.text_detections || []).map(t => t?.DetectedText).filter(Boolean),
+            moderationFlags: currentData.moderation_labels || [],
+            ppeRaw: currentData.ppe || {}
+        };
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `recklovision-report-${Date.now()}.json`;
+        a.click();
+    });
+
+    // ── Reset ─────────────────────────────────────────────────────────────
+    resetBtn.addEventListener('click', () => {
+        currentData = null;
+        allLabels = [];
+        if (pollingInterval) clearTimeout(pollingInterval);
+
+        [violationBanner, compliantBanner, riskDashboard, resultImageWrap,
+         sliderSection, labelsSection, actionsRow, imagekeyBox, metaSection]
+            .forEach(el => el.style.display = 'none');
+
+        uploadZone.style.display = 'block';
+        fileInput.value = '';
+        hideError();
+        confSlider.value = 50;
+        sliderVal.textContent = '50%';
+    });
+
+    // ── Image Key Copy ────────────────────────────────────────────────────
+    imagekeyBox.addEventListener('click', () => {
+        if (!currentData?.imageKey) return;
+        navigator.clipboard.writeText(currentData.imageKey).then(() => {
+            imagekeyBox.textContent = '✅ Copied to clipboard!';
+            setTimeout(() => { imagekeyBox.textContent = `🔑 ${currentData.imageKey}  (click to copy)`; }, 1500);
+        });
+    });
+
+    // ── Zoom ──────────────────────────────────────────────────────────────
+    annotatedImage.addEventListener('click', () => {
+        if (annotatedImage.src) {
+            zoomedImage.src = annotatedImage.src;
+            zoomModal.style.display = 'flex';
+        }
+    });
+    zoomModal.addEventListener('click', () => { zoomModal.style.display = 'none'; });
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function setLoading(show, text) {
+        loadingState.style.display = show ? 'flex' : 'none';
+        if (text) loadingText.textContent = text;
+    }
+
+    function showError(msg) {
+        errorBox.textContent = msg;
+        errorBox.style.display = 'block';
+    }
+
+    function hideError() {
+        errorBox.style.display = 'none';
+        errorBox.textContent = '';
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    fetchHistory();
+
+    // ══════════════════════════════════════════════════════════════════════
+    // LIVE VIDEO FEED
+    // ══════════════════════════════════════════════════════════════════════
+
+    const lfGrid       = document.getElementById('lfGrid');
+    const lfAlert      = document.getElementById('lfAlert');
+    const lfAlertBody  = document.getElementById('lfAlertBody');
+    const lfDot        = document.getElementById('lfDot');
+    const lfStatus     = document.getElementById('lfStatus');
+    const lfFrameCount = document.getElementById('lfFrameCount');
+    const lfToggleBtn  = document.getElementById('lfToggleBtn');
+
+    let lfPaused       = false;
+    let lfPollTimer    = null;
+    let lfLastFrameKey = null;   // track newest frame to detect fresh arrivals
+
+    // ── Toggle pause ──────────────────────────────────────────────────────
+    lfToggleBtn.addEventListener('click', () => {
+        lfPaused = !lfPaused;
+        lfToggleBtn.textContent = lfPaused ? '▶ Resume' : '⏸ Pause';
+        lfDot.classList.toggle('paused', lfPaused);
+        if (!lfPaused) fetchLiveFrames();
+    });
+
+    // ── Poll /enrichedframe ───────────────────────────────────────────────
+    async function fetchLiveFrames() {
+        if (lfPaused) return;
+
+        const endpoint = api('/enrichedframe');
+        if (!endpoint) {
+            setLfStatus('NO API URL', false);
+            scheduleLfPoll(5000);
+            return;
         }
 
-        // ── Helpers ───────────────────────────────────────────────────────
+        try {
+            const res = await fetch(endpoint);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        function showError(msg) {
-            errorAlert.textContent = msg;
-            errorAlert.classList.add('error');
+            const frames = await res.json();
+
+            if (!Array.isArray(frames)) throw new Error('Unexpected response format');
+
+            setLfStatus('LIVE', true);
+            lfFrameCount.textContent = `${frames.length} FRAME${frames.length !== 1 ? 'S' : ''}`;
+
+            renderLfFrames(frames);
+            checkLfWatchList(frames);
+
+        } catch (err) {
+            console.warn('[LiveFeed] poll error:', err.message);
+            setLfStatus('ERROR', false);
+        } finally {
+            scheduleLfPoll(3000);
+        }
+    }
+
+    function scheduleLfPoll(delayMs) {
+        clearTimeout(lfPollTimer);
+        lfPollTimer = setTimeout(fetchLiveFrames, delayMs);
+    }
+
+    // ── Render frames ─────────────────────────────────────────────────────
+    function renderLfFrames(frames) {
+        if (frames.length === 0) {
+            lfGrid.innerHTML = `
+                <div class="lf-empty">
+                    <div class="lf-empty-icon">📡</div>
+                    <div>No frames in the last 24 hours</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted);">Start the video capture client to stream live frames.</div>
+                </div>`;
+            return;
         }
 
-        function hideError() {
-            errorAlert.classList.remove('error');
-            errorAlert.textContent = '';
-        }
+        // Detect if newest frame changed — animate only new cards
+        const newestKey = frames[0]?.image_key;
+        const isUpdate  = newestKey !== lfLastFrameKey;
+        lfLastFrameKey  = newestKey;
 
-    </script>
+        lfGrid.innerHTML = frames.map((frame, idx) => {
+            const labels   = Array.isArray(frame.labels) ? frame.labels : [];
+            const watchHit = Array.isArray(frame.watch_list_triggered) && frame.watch_list_triggered.length > 0;
+            const ts       = frame.processed_timestamp
+                ? new Date(Number(frame.processed_timestamp)).toLocaleString()
+                : '—';
+
+            const topLabels = labels.slice(0, 5).map(l =>
+                `<strong>${l.name}</strong> ${parseFloat(l.confidence).toFixed(0)}%`
+            ).join(' · ') || '<span style="color:var(--text-muted)">—</span>';
+
+            const watchPills = watchHit
+                ? frame.watch_list_triggered.map(n => `<span class="lf-watch-pill">${n}</span>`).join('')
+                : '';
+
+            const imgContent = frame.presigned_url
+                ? `<img class="lf-img"
+                        src="${frame.presigned_url}"
+                        alt="Video frame"
+                        loading="lazy"
+                        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+                        onclick="lfZoom(this.src)" />
+                   <div class="lf-img-placeholder" style="display:none;">📷</div>`
+                : `<div class="lf-img-placeholder">📷</div>`;
+
+            return `
+                <div class="lf-card${watchHit ? ' alert-card' : ''}" style="animation-delay:${idx * 40}ms">
+                    <div class="lf-img-wrap">
+                        ${imgContent}
+                        <span class="lf-source-badge">${frame.source || 'stream'}</span>
+                        ${watchHit ? '<span class="lf-watch-badge">⚠ ALERT</span>' : ''}
+                    </div>
+                    <div class="lf-body">
+                        <div class="lf-label-list">${topLabels}</div>
+                        ${watchPills ? `<div class="lf-watch-row">${watchPills}</div>` : ''}
+                        <div class="lf-ts">${ts}</div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    // ── Watch-list alert banner ───────────────────────────────────────────
+    function checkLfWatchList(frames) {
+        const allTriggered = frames
+            .filter(f => Array.isArray(f.watch_list_triggered) && f.watch_list_triggered.length > 0)
+            .flatMap(f => f.watch_list_triggered);
+        const unique = [...new Set(allTriggered)];
+
+        if (unique.length > 0) {
+            lfAlert.style.display = 'flex';
+            lfAlertBody.textContent =
+                `Objects detected: ${unique.join(', ')}. Check the frames below.`;
+        } else {
+            lfAlert.style.display = 'none';
+        }
+    }
+
+    // ── Status helpers ────────────────────────────────────────────────────
+    function setLfStatus(text, live) {
+        lfStatus.textContent = text;
+        lfDot.style.background = live ? 'var(--success)' : 'var(--warning)';
+    }
+
+    // ── Zoom into a frame ─────────────────────────────────────────────────
+    function lfZoom(src) {
+        zoomedImage.src = src;
+        zoomModal.style.display = 'flex';
+    }
+
+    // ── Start polling on page load ────────────────────────────────────────
+    fetchLiveFrames();
+</script>
 </body>
 </html>
