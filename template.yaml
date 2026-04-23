@@ -320,7 +320,7 @@ Resources:
         Variables:
           S3_BUCKET: !Ref ImagesBucket
           DDB_TABLE: !Ref DetectionResultsTable
-          DDB_GSI_NAME: "processed_timestamp-index"
+          DDB_GSI_NAME: "processed-timestamp-index"
           FETCH_HORIZON_HRS: "24"
           FETCH_LIMIT: "10"
           PRESIGNED_URL_EXPIRY: "1800"

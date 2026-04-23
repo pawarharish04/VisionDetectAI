@@ -1,171 +1,125 @@
-# Serverless Object Detection Pipeline
-A production-quality AWS serverless architecture for image analysis using Amazon Rekognition.
+# VisionDetectAI — Serverless Real-Time Object Detection
 
-## Architecture Overview
-```
-Browser
-  │
-  │ GET /presign?filename=photo.jpg&contentType=image/jpeg
-  ▼
-API Gateway ──► PresignFunction (Lambda)
-                  └─► Returns presigned S3 PUT URL
-  │
-  │ PUT <presigned URL>   (direct upload — Lambda never touches the binary)
-  ▼
-S3 images/YYYY/MM/DD/<uuid>/photo.jpg
-  │
-  │ s3:ObjectCreated event 
-  ▼
-detect-objects Lambda
-  ├─► Rekognition.detect_labels()        ─┐
-  ├─► Rekognition.detect_text()           ├─ parallel via ThreadPoolExecutor
-  └─► Rekognition.detect_moderation()   ─┘
-        │
-        ├─► DynamoDB  (DetectionResults table, 30-day TTL)
-        ├─► S3        (annotated image → results/<uuid>.jpg) 
-        └─► SNS       (high-confidence alert email)          
-```
-## Known Architecture Decisions
+A high-performance, production-quality AWS serverless architecture for real-time video stream analysis and static image processing using Amazon Rekognition.
 
-- PPE detection runs in parallel with labels, text, and moderation so one Rekognition round-trip does not block the others. That keeps end-to-end latency lower for each uploaded image while still storing one combined result record in DynamoDB.
-- DynamoDB Streams trigger annotation as a separate async step so detection and image drawing stay decoupled. That pattern makes the pipeline more resilient, keeps the first write lightweight, and allows annotation retries or future downstream consumers without changing the upload flow.
-- Presigned URLs are used so the browser uploads directly to S3 and Lambda never handles raw image bytes. That reduces Lambda memory and execution time, avoids API Gateway payload limits for large files, and keeps the compute layer focused on orchestration instead of file transfer.
+---
 
-## Project Structure
+## 🏗️ Architecture Overview
+
+VisionDetectAI implements a dual-path pipeline for AI analysis:
+
+### 1. Live Stream Pipeline (Real-Time)
+```text
+[Camera/Stream] ───► Video Capture Client (Python/OpenCV)
+                             │
+                             │ (Base64 over HTTP POST)
+                             ▼
+                    Lambda Function URL (ImageProcessor)
+                             │
+                             ├─► S3 (raw frames/)
+                             ├─► Rekognition (Parallel Analysis) ────► SNS (Alerts)
+                             └─► DynamoDB (EnrichedFrame Metadata)
+                                          │
+                                          ▼ (GSI Query)
+Web Dashboard ◀───────── API Gateway ─── FrameFetcher (Lambda)
 ```
+
+### 2. Static Upload Pipeline (Manual)
+```text
+Browser/Android ───► API Gateway ───► Presign Lambda
+                             │              └─► Returns S3 PUT URL
+                             ▼
+                      S3 (images/) ───► Detect Lambda (Rekognition)
+                                                └─► DynamoDB & Annotated S3
+```
+
+---
+
+## ✨ Key Features
+
+- **🚀 Real-Time Video Analysis**: Capture frames from any webcam or MJPEG/RTSP stream and process them in the cloud with sub-second latency.
+- **🧠 Parallel Rekognition**: Invokes multiple AI models (Labels, Text, Moderation) in parallel using `ThreadPoolExecutor` for minimum overhead.
+- **⚡ Serverless Scaling**: No servers to manage. Scales automatically from 1 frame per minute to thousands of frames per second.
+- **📡 Lambda Function URLs**: Uses high-throughput, low-latency direct Lambda ingestion to bypass account-level Kinesis subscription limits.
+- **🔥 Watch-List Alerting**: Instant SNS (Email/SMS) notifications when specific objects (e.g., Weapons, Fire, Hazards) are detected with high confidence.
+- **📊 Optimized Data Access**: Uses DynamoDB Global Secondary Indexes (GSI) for millisecond retrieval of recent video frames in the dashboard.
+
+---
+
+## 📂 Project Structure
+
+```text
 objectDetection/
-├── template.yaml              # SAM / CloudFormation — all AWS resources
-├── samconfig.toml             # Local deploy config (gitignored)
-├── .gitignore
-│
+├── client/
+│   ├── video_capture.py       # Live stream ingestion client
+│   └── requirements.txt       # Local client dependencies (OpenCV, requests)
 ├── src/
-│   └── presign/
-│       ├── handler.py         #  — Presigned URL Lambda
-│       └── requirements.txt
-│
-├── scripts/
-│   ├── deploy.ps1             # Windows deploy (PowerShell)
-│   ├── deploy.sh              # Linux/macOS deploy (Bash)
-│   └── test_presign.py        # Quick endpoint test
-│
-└── tests/
-    └── test_presign.py        # Unit tests (pytest, no AWS needed)
+│   ├── image_processor/       # Real-time frame analysis Lambda
+│   ├── frame_fetcher/         # Dashboard live-feed API Lambda
+│   ├── detect/                # Static image analysis Lambda
+│   └── ...                    # Other backend microservices
+├── frontend/
+│   └── index.html             # Premium glassmorphism Web UI
+├── template.yaml              # SAM / CloudFormation Infrastructure
+└── samconfig.toml             # Deployment configurations
 ```
 
-## What's Built 
+---
 
-| Resource | Details |
-| **S3 Bucket** | `images/` and `results/` prefixes, versioning on, lifecycle rules |
-| **CORS** | `PUT` allowed from `*`, `Content-Type` and `Authorization` headers |
-| **IAM Role** | S3, Rekognition, DynamoDB, SNS, CloudWatch permissions (least privilege) |
-| **DynamoDB** | `DetectionResults` table, PAY_PER_REQUEST, 30-day TTL, Streams enabled |
-| **SNS Topic** | `DetectionAlerts` — optional email subscription |
-| **Presign Lambda** | Returns presigned `PUT` URL + `imageKey` for downstream polling |
-| **API Gateway** | `GET /presign?filename=X&contentType=Y` |
+## 🚀 Quick Start (Live Stream)
 
-## Prerequisites
-
-- [AWS CLI](https://aws.amazon.com/cli/) — run `aws configure` first
-- [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) — `sam --version`
-- Python 3.12+
-
-## Deploy (Windows)
-
+### 1. Deploy the Infrastructure
 ```powershell
-# 1. Set a globally unique bucket name
-$env:BUCKET_NAME = "my-detection-bucket-abc123"
-
-# 2. Deploy
-.\scripts\deploy.ps1 -BucketName $env:BUCKET_NAME -NotificationEmail "you@example.com"
+./scripts/deploy.ps1 -NotificationEmail "your@email.com"
 ```
+*Note: Save the `IngestionUrl` output by the deployment.*
 
-## Deploy (Linux / macOS)
-
+### 2. Setup the Capture Client
 ```bash
-export BUCKET_NAME="my-detection-bucket-abc123"
-export NOTIFICATION_EMAIL="you@example.com"
-bash scripts/deploy.sh
+cd client
+pip install -r requirements.txt
 ```
 
-## Test the Presign Endpoint
-
+### 3. Start Streaming
+To stream from your default webcam:
 ```bash
-# Get a presigned URL
-python scripts/test_presign.py \
-    --url https://<api-id>.execute-api.us-east-1.amazonaws.com/dev \
-    --filename photo.jpg \
-    --content-type image/jpeg
-
-# Get a presigned URL AND upload a local file end-to-end
-python scripts/test_presign.py \
-    --url <api-url> \
-    --upload ./my_photo.jpg
+python video_capture.py --url "YOUR_LAMBDA_FUNCTION_URL" --source 0
 ```
 
-## Run Unit Tests (no AWS needed)
-
+To stream from a video file or MJPEG URL:
 ```bash
-pip install pytest requests
-python -m pytest tests/ -v
+python video_capture.py --url "YOUR_URL" --source "path/to/video.mp4" --rate 15
 ```
 
-## API Reference
+---
 
-### `GET /presign`
+## 💻 Dashboard
+The dashboard provides a "Mission Control" interface:
+- **Live Feed**: Real-time rendering of processed frames with bounding boxes.
+- **Alert History**: Log of recent watch-list detections.
+- **Analysis View**: Detailed confidence scores and text detection results for every frame.
 
-| Parameter | Required | Example |
+---
+
+## 🛠️ Infrastructure Decisions
+
+- **Direct Ingestion**: Switched from Kinesis to Lambda Function URLs to provide an immediate "zero-setup" experience that avoids common AWS account stream limits.
+- **Boto3 Type Safety**: All Rekognition float outputs are automatically converted to `Decimal` types before DynamoDB persistence to ensure robust data integrity.
+- **S3 Lifecycles**: All temporary video frames are automatically expired after 24 hours to keep storage costs at near-zero.
+- **GSI Indexing**: Implemented `processed-timestamp-index` to allow the dashboard to perform time-series queries without expensive full-table scans.
+
+---
+
+## 📝 API Reference
+
+| Endpoint | Method | Description |
 |---|---|---|
-| `filename` | ✅ | `photo.jpg` |
-| `contentType` | ✅ | `image/jpeg` |
+| `GET /presign` | `GET` | Get a secure URL to upload a static image. |
+| `GET /results/{id}` | `GET` | Get AI analysis for a specific static upload. |
+| `GET /enrichedframe` | `GET` | Fetch the latest processed video frames for the feed. |
+| `Lambda Function URL` | `POST` | Ingest raw frame data (Base64). |
 
-**Response:**
-```json
-{
-  "uploadUrl":     "https://s3.amazonaws.com/... (presigned PUT)",
-  "imageKey":      "images/2024/01/15/<uuid>/photo.jpg",
-  "getUrl":        "https://s3.amazonaws.com/... (presigned GET)",
-  "bucket":        "my-detection-bucket",
-  "expiresIn":     300,
-  "maxFileSizeMb": 20,
-  "instructions": {
-    "method": "PUT",
-    "headers": { "Content-Type": "image/jpeg" },
-    "note": "PUT body = raw file bytes. Do NOT use multipart/form-data."
-  }
-}
-```
+---
 
-**Browser upload pattern:**
-```javascript
-const { uploadUrl, imageKey } = await fetch(
-  `/presign?filename=photo.jpg&contentType=image/jpeg`
-).then(r => r.json());
-
-await fetch(uploadUrl, {
-  method: "PUT",
-  headers: { "Content-Type": "image/jpeg" },
-  body: file,                    // raw File object — no FormData
-});
-
-// Poll for results (or use WebSocket in 
-const results = await fetch(`/results/${encodeURIComponent(imageKey)}`).then(r => r.json());
-```
-
-
- Lambda | Details |
-| `detect-objects` | S3 trigger → parallel Rekognition → DynamoDB |
-| `annotate-image` | Pillow bounding boxes → `results/` in S3 |
-| Frontend | HTML drag-and-drop with presigned upload + polling |
-| Notifications | SNS email when confidence > 90% |
-| Dead-letter queue | SQS DLQ, 3 retries |
-| CloudWatch | Dashboard: invocations, p99 latency, error rate |
-
-## Cost Estimate (light usage)
-
-| Service | Free Tier | Cost After |
-|---|---|---|
-| Lambda | 1M req/mo free | ~$0.20 per 1M |
-| Rekognition | 5K images/mo free | $0.001 per image |
-| S3 | 5 GB free | ~$0.023/GB |
-| DynamoDB | 25 GB free | ~$1.25/M writes |
-| API Gateway | 1M req/mo free | $3.50 per 1M |
+## 🤝 Contributing
+Feel free to open issues or PRs for new Rekognition feature integrations (like Face Comparison or PPE detection)!
