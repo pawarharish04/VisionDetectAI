@@ -40,6 +40,7 @@ WATCH_LIST       = [
 ]
 WATCH_MIN_CONF  = float(os.environ.get("LABEL_WATCH_MIN_CONF", 85.0))
 TTL_DAYS        = int(os.environ.get("TTL_DAYS", 30))
+INGESTION_API_KEY = os.environ.get("INGESTION_API_KEY")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
@@ -47,6 +48,18 @@ TTL_DAYS        = int(os.environ.get("TTL_DAYS", 30))
 def lambda_handler(event, context):
     """Process a single frame POSTed via Function URL."""
     try:
+        # ── Step 0: Security Check ──────────────────────────────────────────
+        if INGESTION_API_KEY:
+            headers = event.get("headers", {})
+            # Function URL headers can be lowercase
+            request_key = headers.get("x-api-key") or headers.get("X-Api-Key")
+            if request_key != INGESTION_API_KEY:
+                logger.warning("Unauthorized ingestion attempt: invalid API Key")
+                return {
+                    "statusCode": 403,
+                    "body": json.dumps({"status": "error", "message": "Unauthorized"})
+                }
+
         body = event.get("body", "{}")
         if event.get("isBase64Encoded"):
             body = base64.b64decode(body).decode("utf-8")
@@ -119,6 +132,7 @@ def process_frame(frame_package: dict) -> None:
         "labels":     detect_labels,
         "text":       detect_text,
         "moderation": detect_moderation,
+        "ppe":        lambda: rekog.detect_protective_equipment(Image={"Bytes": image_bytes})
     }
     results = {}
     with ThreadPoolExecutor(max_workers=3) as executor:
@@ -134,8 +148,19 @@ def process_frame(frame_package: dict) -> None:
     labels     = results.get("labels",     {}).get("Labels",            [])
     texts      = results.get("text",       {}).get("TextDetections",    [])
     mod_labels = results.get("moderation", {}).get("ModerationLabels",  [])
+    ppe_raw    = results.get("ppe",        {})
 
-    # ── Step 3: Watch-list check & SNS alert ──────────────────────────────
+    # ── Step 3: PPE Compliance Logic ──────────────────────────────────────
+    persons = ppe_raw.get("Persons", [])
+    ppe_summary = ppe_raw.get("Summary", {})
+    if not persons:
+        ppe_compliance_status = "N/A"
+        persons_without_ppe = 0
+    else:
+        persons_without_ppe = len(ppe_summary.get("PersonsWithoutRequiredEquipment", []))
+        ppe_compliance_status = "COMPLIANT" if persons_without_ppe == 0 else "NON_COMPLIANT"
+
+    # ── Step 4: Watch-list check & SNS alert ──────────────────────────────
     triggered = [
         lbl for lbl in labels
         if lbl["Name"] in WATCH_LIST and lbl["Confidence"] >= WATCH_MIN_CONF
@@ -143,28 +168,26 @@ def process_frame(frame_package: dict) -> None:
     if triggered:
         _publish_alert(triggered, image_key)
 
-    # ── Step 4: Persist to DynamoDB ───────────────────────────────────────
+    # ── Step 5: Persist to DynamoDB ───────────────────────────────────────
     table = dynamo.Table(DDB_TABLE)
     item  = {
         "imageKey":            image_key,   # matches primary HASH key
         "timestamp":           proc_ts,     # matches primary RANGE key
-        "statusPk":            "FRAME",     # used for GSI query
+        "status":              "COMPLETE",  # triggers AnnotateFunction stream
+        "statusPk":            "COMPLETE",  # used for GSI query
         "processed_timestamp": proc_ts,     # used for GSI sorting
         "capture_timestamp":   cap_ts,
         "source":              source,
-        # Labels stored in a compact form compatible with the frame_fetcher
-        "labels": [
-            {
-                "name":       lbl["Name"],
-                "confidence": str(round(lbl["Confidence"], 2)),
-                "instances":  lbl.get("Instances", []),
-            }
-            for lbl in labels
-        ],
+        # Use PascalCase for consistency with DetectFunction and AnnotateFunction
+        "labels": labels,
         "text_detections": [
             t["DetectedText"] for t in texts if t.get("Type") == "LINE"
         ],
         "moderation_labels": [m["Name"] for m in mod_labels],
+        "ppe": ppe_raw,
+        "ppe_raw": ppe_raw,
+        "ppe_compliance_status": ppe_compliance_status,
+        "persons_without_ppe": persons_without_ppe,
         "watch_list_triggered": [lbl["Name"] for lbl in triggered],
         "label_count":  len(labels),
         "ttl":          int(time.time()) + TTL_DAYS * 24 * 3600,

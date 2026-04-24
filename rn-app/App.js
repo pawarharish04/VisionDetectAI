@@ -8,9 +8,13 @@ import * as ImagePicker from 'expo-image-picker';
 import ImageViewer from 'react-native-image-zoom-viewer';
 
 // Update this to your deployed API Gateway endpoint
-const API_BASE_URL = 'https://yo5zq9f8qj.execute-api.us-east-1.amazonaws.com/dev';
+// ── CONFIGURATION ──────────────────────────────────────────────────────────
+// Update this URL with your actual API Gateway base URL from SAM outputs
+const DEFAULT_API_BASE_URL = 'https://yo5zq9f8qj.execute-api.us-east-1.amazonaws.com/dev';
 
 export default function App() {
+  const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [isConfiguring, setIsConfiguring] = useState(false);
   const [activeTab, setActiveTab] = useState('UPLOAD'); // 'UPLOAD' or 'HISTORY'
   const [imageUri, setImageUri] = useState(null);
   const [status, setStatus] = useState('IDLE'); // IDLE, UPLOADING, DETECTING, SUCCESS, ERROR
@@ -23,7 +27,7 @@ export default function App() {
   const fetchHistory = async () => {
     setIsLoadingHistory(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/history`);
+      const res = await fetch(`${apiBaseUrl}/history`);
       if (!res.ok) throw new Error('Failed to fetch history');
       const data = await res.json();
       setHistoryData(data.history || []);
@@ -58,7 +62,7 @@ export default function App() {
     try {
       // 1. Get Presigned URL
       const filename = `upload-${Date.now()}.jpg`;
-      const presignRes = await fetch(`${API_BASE_URL}/presign?filename=${filename}&contentType=image/jpeg`);
+      const presignRes = await fetch(`${apiBaseUrl}/presign?filename=${filename}&contentType=image/jpeg`);
       if (!presignRes.ok) throw new Error('Failed to get presigned URL');
       const presignData = await presignRes.json();
 
@@ -98,7 +102,7 @@ export default function App() {
           return;
         }
 
-        const res = await fetch(`${API_BASE_URL}/results/${encodedKey}`);
+        const res = await fetch(`${apiBaseUrl}/results/${encodedKey}`);
         if (res.status === 404) return; // Keep waiting
 
         if (!res.ok) {
@@ -155,6 +159,28 @@ export default function App() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <Text style={styles.title}>VisionGuard</Text>
+        <TouchableOpacity onPress={() => setIsConfiguring(!isConfiguring)}>
+          <Text style={styles.settingsBtn}>{isConfiguring ? '✕ Close' : '⚙️ Config'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {isConfiguring && (
+        <View style={styles.configBox}>
+          <Text style={styles.configLabel}>API Base URL (from SAM outputs):</Text>
+          <TextInput
+            style={styles.configInput}
+            value={apiBaseUrl}
+            onChangeText={setApiBaseUrl}
+            placeholder="https://...execute-api.us-east-1.amazonaws.com/dev"
+            placeholderTextColor="#666"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+      )}
+
       <View style={styles.tabs}>
         <TouchableOpacity 
           style={[styles.tab, activeTab === 'UPLOAD' && styles.activeTab]} 
@@ -270,7 +296,13 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0F172A' },
   content: { padding: 20, paddingTop: 60, paddingBottom: 40 },
-  header: { fontSize: 24, fontWeight: 'bold', color: '#F8FAFC', textAlign: 'center', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#F8FAFC' },
+  settingsBtn: { color: '#3B82F6', fontWeight: 'bold' },
+
+  configBox: { backgroundColor: '#1E293B', padding: 15, borderRadius: 8, marginBottom: 20, borderLeftWidth: 4, borderLeftColor: '#3B82F6' },
+  configLabel: { color: '#94A3B8', fontSize: 12, marginBottom: 8, fontWeight: 'bold' },
+  configInput: { color: '#F8FAFC', fontSize: 14, backgroundColor: '#0F172A', padding: 10, borderRadius: 4, borderWidth: 1, borderColor: '#334155' },
   
   tabs: { flexDirection: 'row', marginBottom: 20, backgroundColor: '#1E293B', borderRadius: 8, padding: 4 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 6, alignItems: 'center' },

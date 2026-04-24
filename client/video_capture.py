@@ -5,12 +5,12 @@ client/video_capture.py
 VisionDetectAI — Local video capture client.
 
 Captures frames from a webcam (0) or an MJPEG/RTSP URL, encodes each frame
-as a JPEG, and publishes it directly to the ImageProcessor Lambda Function URL
-via HTTP POST requests.
+as a JPEG, and publishes it to an Amazon Kinesis stream where the
+ImageProcessor Lambda picks it up.
 
 Requirements
 ------------
-    pip install opencv-python requests
+    pip install opencv-python boto3
 
 Usage examples
 --------------
@@ -41,7 +41,7 @@ logging.basicConfig(
 log = logging.getLogger("video_capture")
 
 # ── Defaults ───────────────────────────────────────────────────────────────
-DEFAULT_INGESTION_URL = ""
+DEFAULT_INGESTION_URL = "https://ux6gtpdgp4yigewjaxw6sormlu0ruotk.lambda-url.us-east-1.on.aws/"
 JPEG_QUALITY          = 85     # 0–100; lower → smaller payload, faster upload
 MAX_FRAME_BYTES       = 6_000_000  # Function URL limit is 6MB (buffered)
 _running              = True

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "object-detection-rn",
-    "slug": "object-detection-rn",
+    "name": "VisionGuard",
+    "slug": "vision-guard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

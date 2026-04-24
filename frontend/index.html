@@ -203,6 +203,7 @@
 
         /* ── Config bar ── */
         .config-bar {
+            display: none;
             position: relative;
             z-index: 10;
             display: flex;
@@ -245,6 +246,172 @@
             color: var(--muted);
         }
 
+        /* ── Settings Panel ── */
+        .settings-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+        }
+
+        .settings-panel {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            width: 320px;
+            background: var(--surface);
+            border: 1px solid var(--border-hi);
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 201;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: none;
+            animation: slideIn 0.2s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .settings-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+        }
+
+        .settings-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .settings-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        .btn-settings {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .btn-settings:hover {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* ── Onboarding & Mode Switcher ── */
+        .onboarding-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 500;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(16px);
+            transition: opacity 0.3s;
+        }
+
+        .onboarding-container {
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .mode-cards {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+        }
+
+        .mode-card {
+            flex: 1;
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mode-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-5px);
+            background: rgba(56, 189, 248, 0.05);
+        }
+
+        .mode-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .mode-card h3 {
+            font-family: var(--mono);
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+
+        .mode-card p {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .mode-switcher {
+            display: flex;
+            background: var(--surface2);
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin: 0 auto 20px;
+            width: fit-content;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-family: var(--mono);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--surface);
+            color: var(--text);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            border: 1px solid var(--border);
+        }
+
+        #appContainer {
+            display: none; /* hidden until mode selected */
+        }
+
         /* ── Layout ── */
         .layout {
             position: relative;
@@ -275,7 +442,7 @@
         /* ── Upload zone ── */
         .upload-zone {
             border: 1.5px dashed var(--border-hi);
-            border-radius: 10px;
+            border-radius: 12px;
             padding: clamp(32px, 7vw, 60px) 20px;
             text-align: center;
             cursor: pointer;
@@ -283,6 +450,10 @@
             background: rgba(56, 189, 248, 0.02);
             position: relative;
             overflow: hidden;
+            display: block;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
         }
 
         .upload-zone::after {
@@ -1292,52 +1463,90 @@
         <img id="zoomedImg" class="zoom-img" src="" alt="">
     </div>
 
-    <!-- Topbar -->
-    <header class="topbar">
-        <div class="logo">
-            <div class="logo-mark">🔍</div>
-            <span class="logo-name">Reko<em>Vision</em></span>
-        </div>
-        <div class="topbar-right">
-            <span class="pill-badge">INDUSTRIAL AI · AWS SERVERLESS</span>
-            <div class="live-indicator">
-                <div class="live-dot"></div>LIVE
+    <!-- Onboarding overlay -->
+    <div id="onboardingOverlay" class="onboarding-overlay">
+        <div class="onboarding-container">
+            <h2 style="text-align: center; margin-bottom: 40px; font-family: var(--mono); color: var(--primary);">Select Analysis Mode</h2>
+            <div class="mode-cards">
+                <div class="mode-card" id="btnOnboardStatic">
+                    <div class="mode-icon">🖼️</div>
+                    <h3>Static Analysis</h3>
+                    <p>Optimized for one-time high-resolution safety audits via image upload.</p>
+                </div>
+                <div class="mode-card" id="btnOnboardLive">
+                    <div class="mode-icon">🎥</div>
+                    <h3>Live Pipeline</h3>
+                    <p>Optimized for continuous monitoring of real-time worker streams.</p>
+                </div>
             </div>
         </div>
-    </header>
-
-    <!-- Stats strip -->
-    <div class="stats-strip">
-        <div class="stat">
-            <span class="stat-label">Scans</span>
-            <span class="stat-value" id="statTotal">—</span>
-        </div>
-        <div class="stat">
-            <span class="stat-label">Violations</span>
-            <span class="stat-value red" id="statViolations">—</span>
-        </div>
-        <div class="stat">
-            <span class="stat-label">Avg Latency</span>
-            <span class="stat-value" id="statLatency">—</span>
-        </div>
-        <div class="stat">
-            <span class="stat-label">Compliance</span>
-            <span class="stat-value green" id="statCompliance">—</span>
-        </div>
     </div>
 
-    <!-- Config bar -->
-    <div class="config-bar">
-        <span class="config-label">API Endpoint</span>
-        <input id="apiInput" class="config-input" type="url"
-            placeholder="https://<id>.execute-api.us-east-1.amazonaws.com/dev" />
-    </div>
+    <!-- Main App Container -->
+    <div id="appContainer">
+        <!-- Topbar -->
+        <header class="topbar">
+            <div class="logo">
+                <div class="logo-mark">🔍</div>
+                <span class="logo-name">Reko<em>Vision</em></span>
+            </div>
+            <div class="topbar-right">
+                <span class="pill-badge">INDUSTRIAL AI · AWS SERVERLESS</span>
+                <div class="live-indicator" style="margin-right: 8px;">
+                    <div class="live-dot"></div>LIVE
+                </div>
+                <button class="btn-settings" id="toggleSettings">⚙️ Settings</button>
+            </div>
+        </header>
 
-    <!-- Main layout -->
-    <div class="layout">
+        <!-- Settings Panel -->
+        <div id="settingsOverlay" class="settings-overlay"></div>
+        <div id="settingsPanel" class="settings-panel">
+            <div class="settings-title">⚙️ System Configuration</div>
+            <div class="settings-group">
+                <label class="settings-label">Backend API Endpoint</label>
+                <input id="apiInput" class="config-input" type="password" 
+                    placeholder="https://yo5zq9.execute-api.us-east-1.amazonaws.com/dev" />
+                <div style="font-size:10px; color:var(--muted); margin-top:4px;">
+                    Masked for security. Changes apply immediately.
+                </div>
+            </div>
+            <button class="btn-settings" style="width:100%; margin-top:20px;" id="closeSettings">Close Settings</button>
+        </div>
 
-        <!-- Main panel -->
-        <div class="main">
+        <!-- Stats strip -->
+        <div class="stats-strip">
+            <div class="stat">
+                <span class="stat-label">Scans</span>
+                <span class="stat-value" id="statTotal">—</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Violations</span>
+                <span class="stat-value red" id="statViolations">—</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Avg Latency</span>
+                <span class="stat-value" id="statLatency">—</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Compliance</span>
+                <span class="stat-value green" id="statCompliance">—</span>
+            </div>
+        </div>
+
+        <!-- Mode Switcher -->
+        <div style="text-align: center; margin-top: 20px; position: relative; z-index: 10;">
+            <div class="mode-switcher">
+                <button id="swStatic" class="mode-btn active">🖼️ STATIC</button>
+                <button id="swLive" class="mode-btn">🎥 LIVE PIPELINE</button>
+            </div>
+        </div>
+
+        <!-- Main layout -->
+        <div class="layout" id="mainLayout">
+
+            <!-- Main panel -->
+            <div class="main" id="mainPanel">
 
             <!-- Upload -->
             <div id="uploadZone">
@@ -1438,7 +1647,7 @@
         </div>
 
         <!-- Side panel -->
-        <div class="side">
+        <div class="side" id="sidePanel">
 
             <!-- Meta (hidden until result) -->
             <div class="side-card" id="metaCard" style="display:none;">
@@ -1470,7 +1679,7 @@
     </div>
 
     <!-- Live feed -->
-    <div class="live-section">
+    <div class="live-section" id="liveSection">
         <div class="lf-header">
             <div class="lf-title-group">
                 <div class="lf-icon">🎥</div>
@@ -1505,6 +1714,7 @@
             </div>
         </div>
     </div>
+    </div>
 
     <script>
         // ── State ────────────────────────────────────────────────────────────────
@@ -1514,6 +1724,18 @@
         // ── DOM ──────────────────────────────────────────────────────────────────
         const $ = id => document.getElementById(id);
         const apiInput = $('apiInput');
+        const toggleSettings = $('toggleSettings');
+        const settingsOverlay = $('settingsOverlay');
+        const settingsPanel = $('settingsPanel');
+        const closeSettings = $('closeSettings');
+        const onboardingOverlay = $('onboardingOverlay');
+        const btnOnboardStatic = $('btnOnboardStatic');
+        const btnOnboardLive = $('btnOnboardLive');
+        const appContainer = $('appContainer');
+        const swStatic = $('swStatic');
+        const swLive = $('swLive');
+        const mainLayout = $('mainLayout');
+        const liveSection = $('liveSection');
         const dropZone = $('dropZone');
         const fileInput = $('fileInput');
         const uploadZone = $('uploadZone');
@@ -1548,6 +1770,18 @@
         const exportBtn = $('exportBtn');
         const resetBtn = $('resetBtn');
         const refreshBtn = $('refreshBtn');
+
+        // ── Settings Panel ────────────────────────────────────────────────────────
+        toggleSettings.addEventListener('click', () => {
+            settingsOverlay.style.display = 'block';
+            settingsPanel.style.display = 'block';
+        });
+        const hideSettings = () => {
+            settingsOverlay.style.display = 'none';
+            settingsPanel.style.display = 'none';
+        };
+        closeSettings.addEventListener('click', hideSettings);
+        settingsOverlay.addEventListener('click', hideSettings);
 
         // ── API URL ───────────────────────────────────────────────────────────────
         apiInput.value = localStorage.getItem('rvApiUrl') || '';
@@ -1839,7 +2073,7 @@
         const lfCount = $('lfCount');
         const lfToggle = $('lfToggle');
 
-        let lfPaused = false, lfTimer = null, lfLastKey = null;
+        let lfPaused = true, lfTimer = null, lfLastKey = null;
 
         lfToggle.addEventListener('click', () => {
             lfPaused = !lfPaused;
@@ -1915,7 +2149,31 @@
             lfDot.style.background = live ? 'var(--success)' : 'var(--warning)';
         }
 
-        fetchFrames();
+        // ── Onboarding & Mode Switch ──────────────────────────────────────────────
+        function setMode(mode) {
+            onboardingOverlay.style.display = 'none';
+            appContainer.style.display = 'block';
+            if (mode === 'static') {
+                swStatic.classList.add('active');
+                swLive.classList.remove('active');
+                mainLayout.style.display = '';
+                liveSection.style.display = 'none';
+                lfPaused = true;
+                clearTimeout(lfTimer);
+            } else {
+                swStatic.classList.remove('active');
+                swLive.classList.add('active');
+                mainLayout.style.display = 'none';
+                liveSection.style.display = '';
+                lfPaused = false;
+                fetchFrames();
+            }
+        }
+
+        btnOnboardStatic.addEventListener('click', () => setMode('static'));
+        btnOnboardLive.addEventListener('click', () => setMode('live'));
+        swStatic.addEventListener('click', () => setMode('static'));
+        swLive.addEventListener('click', () => setMode('live'));
     </script>
 </body>
 

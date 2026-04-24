@@ -28,6 +28,13 @@ Parameters:
     Default: ""
     Description: (Optional) Email address for SNS high-confidence detection alerts.
 
+  IngestionApiKey:
+    Type: String
+    Default: "reckovision-live-ingest-key-2024"
+    Description: >
+      Security key for the live video ingestion endpoint.
+      Client must send this in the 'x-api-key' header.
+
 # ──────────────────────────────────────────────────────────────
 # Globals
 # ──────────────────────────────────────────────────────────────
@@ -303,6 +310,7 @@ Resources:
           LABEL_WATCH_LIST: "Person,Car,Weapon,Fire,Knife"
           LABEL_WATCH_MIN_CONF: "85"
           TTL_DAYS: "30"
+          INGESTION_API_KEY: !Ref IngestionApiKey
 
   # ── Frame Fetcher Lambda (API Gateway GET /enrichedframe) ───
   FrameFetcherFunction:

@@ -80,7 +80,7 @@ def _fetch_recent_frames() -> list:
             IndexName=DDB_GSI_NAME,
             KeyConditionExpression="statusPk = :pk AND processed_timestamp > :horizon",
             ExpressionAttributeValues={
-                ":pk":      "FRAME",
+                ":pk":      "COMPLETE",
                 ":horizon": horizon_ms,
             },
             ScanIndexForward=False,   # Sort descending (newest first)
