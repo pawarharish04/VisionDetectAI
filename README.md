@@ -4,6 +4,9 @@ VisionDetectAI is a serverless, multi-platform object detection project built ar
 
 ---
 
+<img width="1428" height="804" alt="Screenshot 2026-04-24 193642" src="https://github.com/user-attachments/assets/2145da16-4a7b-41b7-b460-75264456b998" />
+
+
 ## Table of Contents
 
 - [Overview](#overview)
